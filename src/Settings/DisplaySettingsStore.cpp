@@ -72,7 +72,7 @@ void DisplaySettingsStore::loadDefaults()
     _settings.dimLevelIdx = 3;     // Dim level 30 % (0 = never)
     _settings.invert = false;      // Invert check (fx:'inv')
     _settings.autoPaging = true;   // Auto paging (fx:'autopage')
-    _settings.screenSaverType = 0; // idx 0..10 (Clock/Cube3D/Doom/.../off) -> 0 = Clock
+    _settings.screenSaverType = 6; // ScreenSaverType -> 6 = Matrix (classic)
     _settings.screenSaverMin = 30; // Saver after 30 min (0 = off)
     _settings.sleepMin = 60;       // Sleep after 60 min (0 = never)
     _settings.displayRotate = false; // 180deg rotation off
@@ -202,7 +202,7 @@ bool DisplaySettingsStore::deserialize(const uint8_t *buf, size_t size)
     _settings.dimLevelIdx = getU8(p);
     _settings.invert = getU8(p) != 0;
     _settings.autoPaging = getU8(p) != 0;
-    _settings.screenSaverType = getU8(p);
+    _settings.screenSaverType = validScreenSaverType(getU8(p));
     _settings.screenSaverMin = clampMin(getU16(p));
     _settings.sleepMin = clampMin(getU16(p));
     for (size_t i = 0; i < HOME_KEY_COUNT; ++i)

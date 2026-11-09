@@ -34,8 +34,8 @@ class i2cDisplay;
 
 struct WidgetCommandInfo
 {
-    std::string name;                // "clock", "matrix", etc.
-    std::string displayName;         // "Clock", "Matrix", etc.
+    std::string name;                // "clock", "pong", etc.
+    std::string displayName;         // "Clock", "Pong", etc.
     std::function<Widget*()> create; // Factory function
 };
 

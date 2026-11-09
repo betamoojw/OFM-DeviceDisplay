@@ -40,10 +40,10 @@ namespace DefaultMenus
         return opts;
     }
 
-    // Order MUST match ScreenSaverType (value == index).
+    // Order MUST match kScreenSaverTypes in SettingsIds.cpp (position -> ScreenSaverType).
     inline const std::vector<std::string>& screensaverOptions()
     {
-        static const std::vector<std::string> opts = {"Clock", "Cube 3D", "Doom", "FireWorks", "Life", "Matrix", "Matrix Cl.", "Pong", "Rain", "Starfield", "off"};
+        static const std::vector<std::string> opts = {"Clock", "Cube 3D", "Doom", "FireWorks", "Life", "Matrix", "Pong", "Starfield", "off"};
         return opts;
     }
 
@@ -464,7 +464,7 @@ namespace DefaultMenus
                 o.type = MenuConfig::MenuElementType::Dropdown;
                 o.key = "screensaver_type";
                 o.dropdownOptions = screensaverOptions();
-                o.defaultValue = MenuValue(static_cast<size_t>(5)); // Matrix
+                o.defaultValue = MenuValue(static_cast<size_t>(5)); // Matrix (type 6)
                 o.radioList = true;                                 // open as a full-screen single-select picker
             });
             addRow(sub, [](MenuOption& o) {

@@ -39,25 +39,20 @@ class MenuRegistry;
 class Widget;
 
 // Screensaver selection. setScreenSaverType() owns the value->widget mapping.
-// The enum value == dropdown option index AND is the persisted field (screenSaverType),
-// so only APPEND new screensavers at the end (before Off) once shipped, or existing saves break.
+// The enum value is the persisted field (screenSaverType); lists map it via screenSaverListPos().
+// 5 and 8 (former Matrix, Rain) stay unused, a stored 5/8 loads as MatrixClassic.
 enum class ScreenSaverType : uint8_t
 {
     Clock = 0,         // WidgetClock (analog)
     Cube3D = 1,        // WidgetCube3D
-    Doom = 2,          // WidgetDoom (raycaster, SciFi easter egg)
+    Doom = 2,          // WidgetDoom (raycaster)
     Fireworks = 3,     // WidgetFireworks
     Life = 4,          // WidgetLife (Conway)
-    Matrix = 5,        // WidgetMatrix
-    MatrixClassic = 6, // WidgetMatrixClassic
+    MatrixClassic = 6, // WidgetMatrixClassic, listed as "Matrix"
     Pong = 7,          // WidgetPong
-    Rain = 8,          // WidgetRain
     Starfield = 9,     // WidgetStarfield
     Off = 10           // no screensaver widget -> WidgetsManager goes straight to SLEEP
 };
-
-// Number of selectable screensaver entries. Keep in sync with the enum + the dropdown options.
-static constexpr uint8_t SCREENSAVER_TYPE_COUNT = 11;
 
     // Hardware validation
     #ifndef OKNXHW_DEVICE_DISPLAY_I2C_INST

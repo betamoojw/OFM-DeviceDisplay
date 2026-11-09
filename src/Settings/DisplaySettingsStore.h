@@ -131,7 +131,7 @@ class DisplaySettingsStore
     void setDimLevelIdx(uint8_t idx) { assign(_settings.dimLevelIdx, idx); }
     void setInvert(bool v) { assign(_settings.invert, v); }
     void setAutoPaging(bool v) { assign(_settings.autoPaging, v); }
-    void setScreenSaverType(uint8_t idx) { assign(_settings.screenSaverType, idx); }
+    void setScreenSaverType(uint8_t type) { assign(_settings.screenSaverType, validScreenSaverType(type)); }
     void setScreenSaverMin(uint16_t v) { assign(_settings.screenSaverMin, v); }
     void setSleepMin(uint16_t v) { assign(_settings.sleepMin, v); }
     void setIconMenu(bool v) { assign(_settings.iconMenu, v); }

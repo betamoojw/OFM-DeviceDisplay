@@ -66,4 +66,10 @@ bool readDisplaySetting(const char* id, long& value);
 /** @brief Label for a Choice setting's option index, or nullptr when out of range. */
 const char* displayChoiceLabel(const char* id, long index);
 
+/** @brief Screensaver list (menu, web, ddc) position -> persisted ScreenSaverType value; clamps. */
+uint8_t screenSaverTypeAt(long pos);
+
+/** @brief Persisted ScreenSaverType value -> list position. */
+uint8_t screenSaverListPos(uint8_t type);
+
 #endif // DEVICE_DISPLAY_MODULE

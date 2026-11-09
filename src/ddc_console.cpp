@@ -17,10 +17,9 @@
     #include "Widgets/Cube3D.h"
     #include "Widgets/Fireworks.h"
     #include "Widgets/Life.h"
-    #include "Widgets/Matrix.h"
+    #include "Widgets/MatrixClassic.h"
     #include "Widgets/Pong.h"
     #include "Widgets/QRcode.h"
-    #include "Widgets/Rain.h"
     #include "Widgets/Starfield.h"
     #include "Widgets/SysInfoLite.h"
     #ifdef WIDGET_CONSOLE
@@ -63,8 +62,8 @@ void DdcConsole::registerWidgetCommands()
         {"clock", "Clock", []() -> Widget* {
              return new WidgetClock(5000, WidgetFlags::DefaultWidget, false);
          }},
-        {"matrix", "Matrix", []() -> Widget* {
-             return new WidgetMatrix(5000, WidgetFlags::DefaultWidget, 7);
+        {"matrix", "MatrixClassic", []() -> Widget* {
+             return new WidgetMatrixClassic(5000, WidgetFlags::DefaultWidget, 8);
          }},
         {"pong", "Pong", []() -> Widget* {
              return new WidgetPong(5000, WidgetFlags::DefaultWidget);
@@ -77,9 +76,6 @@ void DdcConsole::registerWidgetCommands()
          }},
         {"life", "Life", []() -> Widget* {
              return new WidgetLife(5000, WidgetFlags::DefaultWidget);
-         }},
-        {"rain", "Rain", []() -> Widget* {
-             return new WidgetRain(5000, WidgetFlags::DefaultWidget, 6);
          }},
         {"fireworks", "Fireworks", []() -> Widget* {
              return new WidgetFireworks(10000, WidgetFlags::DefaultWidget, 10);
@@ -249,7 +245,8 @@ void DdcConsole::logConfig()
     openknx.logger.logWithValues(" invert             : %u", store.invert() ? 1 : 0);
     openknx.logger.logWithValues(" auto_paging        : %u", store.autoPaging() ? 1 : 0);
     openknx.logger.logWithValues(" icon_menu          : %u", store.iconMenu() ? 1 : 0);
-    openknx.logger.logWithValues(" screensaver_type   : %u   (0..10)", store.screenSaverType());
+    const uint8_t ssPos = screenSaverListPos(store.screenSaverType());
+    openknx.logger.logWithValues(" screensaver_type   : %u   (0..8, %s)", ssPos, displayChoiceLabel("screensaver_type", ssPos));
     openknx.logger.logWithValues(" screensaver_after  : %u   min (0 = off)", store.screenSaverMin());
     openknx.logger.logWithValues(" sleep_after        : %u   min (0 = never)", store.sleepMin());
     openknx.logger.logWithValues(" rotate             : %u   (180 deg)", store.displayRotate() ? 1 : 0);
@@ -269,7 +266,7 @@ namespace
     // Label for the persisted screensaver type; the list itself lives in SettingsIds.cpp.
     const char* screenSaverTypeLabel(uint8_t type)
     {
-        const char* label = displayChoiceLabel("screensaver_type", type);
+        const char* label = displayChoiceLabel("screensaver_type", screenSaverListPos(type));
         return label != nullptr ? label : "?";
     }
 
@@ -400,7 +397,7 @@ void DdcConsole::logMenuSettings()
     openknx.logger.logWithValues(" Dim level idx        : %u (0=never)", store.dimLevelIdx());
     openknx.logger.logWithValues(" Invert               : %-3s", store.invert() ? "yes" : "no");
     openknx.logger.logWithValues(" Auto-Paging          : %-3s", store.autoPaging() ? "yes" : "no");
-    openknx.logger.logWithValues(" Screensaver type     : %u (%s)", store.screenSaverType(),
+    openknx.logger.logWithValues(" Screensaver type     : %u (%s)", screenSaverListPos(store.screenSaverType()),
                                  screenSaverTypeLabel(store.screenSaverType()));
     openknx.logger.logWithValues(" Screensaver (min)    : %u", store.screenSaverMin());
     openknx.logger.logWithValues(" Display off (min)    : %u", store.sleepMin());

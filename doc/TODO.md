@@ -235,7 +235,7 @@ Display › Anzeige
 | Helligkeit | 10 % … 100 % in Schritten von 10 % | 100 % |
 | Auto-Dim nach | 0 … 999 Minuten, 0 = aus | 15 |
 | Dim-Level | nie, 10 % … 90 % | 30 % |
-| Bildschirmschoner | Clock, Cube3D, Doom, FireWorks, Life, Matrix, MatrixCl., Pong, Rain, Starfield, Aus | Clock |
+| Bildschirmschoner | Clock, Cube3D, Doom, FireWorks, Life, Matrix, Pong, Starfield, Aus | Matrix |
 | Bildschirmschoner nach | 0 … 999 Minuten, 0 = aus | 30 |
 | Display aus nach | 0 … 999 Minuten, 0 = nie | 60 |
 | Invertieren | ja / nein | nein |

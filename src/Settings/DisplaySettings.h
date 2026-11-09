@@ -41,9 +41,12 @@ enum HomeKeyIndex : uint8_t
     HOME_KEY_COUNT = 4
 };
 
+/** @brief Screensaver value to persist: the removed 5 (Matrix), 8 (Rain) and out-of-range values become 6 (Matrix). */
+inline uint8_t validScreenSaverType(uint8_t t) { return (t == 5 || t == 8 || t > 10) ? 6 : t; }
+
 /**
- * POD display settings model. Choice fields store the option index into the mock choice list
- * (ranges noted per field); defaults mirror the mock. Fixed size -> trivially copyable/serializable.
+ * POD display settings model. Choice fields store the option index into the mock choice list, except
+ * screenSaverType, which stores the ScreenSaverType value (ranges noted per field). Fixed size -> trivially copyable.
  */
 struct DisplaySettings
 {
@@ -62,9 +65,8 @@ struct DisplaySettings
     // "Auto paging" check (fx:'autopage') -> default true
     bool autoPaging = true;
 
-    // "Screensaver" idx 0..10 (Clock/Cube3D/Doom/FireWorks/Life/Matrix/MatrixCl./Pong/Rain/Starfield/Aus)
-    // -> default 0 = Clock. (Menu list in DefaultMenus.h must stay in this exact order = ScreenSaverType enum.)
-    uint8_t screenSaverType = 0;
+    // "Screensaver": ScreenSaverType value (0..10, 5 and 8 unused) -> default 6 = Matrix (classic).
+    uint8_t screenSaverType = 6;
 
     // "Saver after": minutes until the screensaver starts; 0 = off. Edited via the number editor.
     uint16_t screenSaverMin = 30;

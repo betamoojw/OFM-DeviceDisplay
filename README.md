@@ -10,7 +10,7 @@
 A widget-based OLED display manager for OpenKNX devices: a priority/state-machine widget engine with power-save, a 5-way button system with **hold-to-confirm gestures**, a **runtime menu** (registry-driven, in-place editors, on-device network config), and **flash-persisted settings**.
 
 **What it can do:**
-- **Widgets**: boot logo, clock, time, sysinfo, QR, about, screensavers (Matrix/Doom/Rain/Life/…) + your own
+- **Widgets**: boot logo, clock, time, sysinfo, QR, about, screensavers (Matrix/Doom/Life/…) + your own
 - **Priority engine**: CRITICAL > HIGH > NORMAL > LOW — a status/error widget overrides anything and auto-removes
 - **Power-save**: Active → Dimmed → Screensaver → Sleep → Off (all timeouts configurable & flash-persisted)
 - **Gestures**: hold a Home key to Reboot / ProgMode / Display-off / Pause with a countdown overlay (release = abort)
@@ -322,7 +322,7 @@ STARTUP -> IDLE -> {PRIORITY, BACKGROUND, DEFAULT}
 │ queue  PRIORITY    ProgMode · GestureOverlay · About                     │
 │        BACKGROUND  Menu                                                  │
 │        DEFAULT     Clock · Time · ...                                    │
-│        SCREENSAVER Matrix · Doom · Rain · Life · ...                     │
+│        SCREENSAVER Matrix · Doom · Life · ...                            │
 └──────────────────────────────────────────────────────────────────────────┘
   │  borrows ▼          settings applyToRuntime() ▲
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -511,7 +511,7 @@ STARTUP -> IDLE -> {PRIORITY, BACKGROUND, DEFAULT}
 - **Multiple Widget Types**: Boot logo, menu, clock, QR code, system info, animations
 - **Dynamic Text and Alignment**: Customizable text alignment, size, color, and scrolling
 - **Icons and QR Codes**: Built-in support for icons and QR code generation
-- **Animated Widgets**: Matrix, rain, starfield, fireworks, 3D cube, Pong, Game of Life
+- **Animated Widgets**: Matrix, starfield, fireworks, 3D cube, Pong, Game of Life
 - **Brightness Control**: Automatic brightness adjustment with VCOM register support (0-100%)
 
 ### Button System
@@ -905,7 +905,7 @@ Display settings are edited in the on-screen menu and **persisted in the DeviceD
 | `dimLevelIdx` | dim level: 0 = nie, 1..9 → 10..90 % (effective dim = min(level, brightness)) | 3 (30 %) |
 | `invert` | invert display | false |
 | `autoPaging` | auto-page the widget rotation | true |
-| `screenSaverType` | 0..10 (Clock … Aus) — order **must** match the menu + `ScreenSaverType` enum | 0 (Clock) |
+| `screenSaverType` | `ScreenSaverType` value 0..10; 5 and 8 (removed Matrix, Rain) load as 6. Menu, web and `ddc` use the list position 0..8 | 6 (Matrix) |
 | `screenSaverMin` | screensaver after N min; 0 = aus | 30 |
 | `sleepMin` | **display off** after N min; 0 = nie | 60 |
 | `keyMap[4]` | Home-key actions {UP, DOWN, LEFT, RIGHT} | Pause / Reboot / DisplayOff / Screenshot |
@@ -1280,9 +1280,7 @@ void setupMenu(MenuWidget* menu)
 | **WidgetQRCode** | Default | QR code generator |
 | **WidgetSysInfoLite** | Default | System information display |
 | **WidgetBootLogo** | StatusWidget | Boot splash screen |
-| **WidgetMatrixClassic** | Screensaver | Matrix rain effect |
-| **WidgetMatrix** | Screensaver | Alternative matrix effect |
-| **WidgetRain** | Screensaver | Rain animation |
+| **WidgetMatrixClassic** | Screensaver | Matrix rain effect, listed as "Matrix" |
 | **WidgetStarfield** | Screensaver | Starfield animation |
 | **WidgetFireworks** | Screensaver | Fireworks animation |
 | **WidgetCube3D** | Screensaver | 3D rotating cube |

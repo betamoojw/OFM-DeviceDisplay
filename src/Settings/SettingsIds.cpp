@@ -11,7 +11,7 @@ const DisplaySettingDef DISPLAY_SETTING_DEFS[] = {
     {"invert", "Invertieren", "", DisplaySettingKind::Toggle, 0, 1, DSG_NORMAL},
     {"auto_paging", "Seiten auto-blättern", "", DisplaySettingKind::Toggle, 0, 1, DSG_NORMAL},
     {"icon_menu", "Icon-Menü", "", DisplaySettingKind::Toggle, 0, 1, DSG_NORMAL},
-    {"screensaver_type", "Bildschirmschoner", "", DisplaySettingKind::Choice, 0, 10, DSG_NORMAL},
+    {"screensaver_type", "Bildschirmschoner", "", DisplaySettingKind::Choice, 0, 8, DSG_NORMAL}, // list position
     {"screensaver_after", "Screensaver nach", "Minuten, 0 = aus", DisplaySettingKind::Number, 0, 999, DSG_NORMAL},
     {"sleep_after", "Display aus nach", "Minuten, 0 = nie", DisplaySettingKind::Number, 0, 999, DSG_NORMAL},
     {"rotate", "Um 180° drehen", "", DisplaySettingKind::Toggle, 0, 1, DSG_NORMAL},
@@ -30,10 +30,11 @@ const size_t DISPLAY_SETTING_DEF_COUNT = sizeof(DISPLAY_SETTING_DEFS) / sizeof(D
 
 namespace
 {
-    // Order MUST match the ScreenSaverType enum and the DefaultMenus dropdown.
+    // Screensaver list: persisted ScreenSaverType per position, same order as the DefaultMenus dropdown.
+    const uint8_t kScreenSaverTypes[] = {0, 1, 2, 3, 4, 6, 7, 9, 10};
     const char* const kScreenSaverLabels[] = {
-        "Clock", "Cube3D", "Doom", "FireWorks", "Life", "Matrix",
-        "MatrixCl.", "Pong", "Rain", "Starfield", "Aus"};
+        "Clock", "Cube3D", "Doom", "FireWorks", "Life", "Matrix", "Pong", "Starfield", "Aus"};
+    constexpr uint8_t kScreenSaverCount = sizeof(kScreenSaverTypes);
 
     // Order MUST match the HomeKeyAction enum (it is the persisted value).
     const char* const kHomeKeyLabels[] = {
@@ -79,7 +80,7 @@ bool applyDisplaySetting(const char* id, long value)
     else if (strcmp(id, "invert") == 0) store.setInvert(v != 0);
     else if (strcmp(id, "auto_paging") == 0) store.setAutoPaging(v != 0);
     else if (strcmp(id, "icon_menu") == 0) store.setIconMenu(v != 0);
-    else if (strcmp(id, "screensaver_type") == 0) store.setScreenSaverType((uint8_t)v);
+    else if (strcmp(id, "screensaver_type") == 0) store.setScreenSaverType(screenSaverTypeAt(v));
     else if (strcmp(id, "screensaver_after") == 0) store.setScreenSaverMin((uint16_t)v);
     else if (strcmp(id, "sleep_after") == 0) store.setSleepMin((uint16_t)v);
     else if (strcmp(id, "rotate") == 0) store.setDisplayRotate(v != 0);
@@ -103,7 +104,7 @@ bool readDisplaySetting(const char* id, long& value)
     else if (strcmp(id, "invert") == 0) value = store.invert() ? 1 : 0;
     else if (strcmp(id, "auto_paging") == 0) value = store.autoPaging() ? 1 : 0;
     else if (strcmp(id, "icon_menu") == 0) value = store.iconMenu() ? 1 : 0;
-    else if (strcmp(id, "screensaver_type") == 0) value = store.screenSaverType();
+    else if (strcmp(id, "screensaver_type") == 0) value = screenSaverListPos(store.screenSaverType());
     else if (strcmp(id, "screensaver_after") == 0) value = store.screenSaverMin();
     else if (strcmp(id, "sleep_after") == 0) value = store.sleepMin();
     else if (strcmp(id, "rotate") == 0) value = store.displayRotate() ? 1 : 0;
@@ -121,8 +122,7 @@ const char* displayChoiceLabel(const char* id, long index)
     if (id == nullptr) return nullptr;
     if (strcmp(id, "screensaver_type") == 0)
     {
-        if (index >= 0 && index < (long)(sizeof(kScreenSaverLabels) / sizeof(kScreenSaverLabels[0])))
-            return kScreenSaverLabels[index];
+        if (index >= 0 && index < kScreenSaverCount) return kScreenSaverLabels[index];
     }
     else if (homeKeyOf(id) != HOME_KEY_COUNT)
     {
@@ -130,6 +130,21 @@ const char* displayChoiceLabel(const char* id, long index)
             return kHomeKeyLabels[index];
     }
     return nullptr;
+}
+
+uint8_t screenSaverTypeAt(long pos)
+{
+    if (pos < 0) pos = 0;
+    if (pos >= kScreenSaverCount) pos = kScreenSaverCount - 1;
+    return kScreenSaverTypes[pos];
+}
+
+uint8_t screenSaverListPos(uint8_t type)
+{
+    type = validScreenSaverType(type);
+    for (uint8_t i = 0; i < kScreenSaverCount; ++i)
+        if (kScreenSaverTypes[i] == type) return i;
+    return 0;
 }
 
 #endif // DEVICE_DISPLAY_MODULE

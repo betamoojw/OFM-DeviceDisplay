@@ -6,6 +6,7 @@
     #include "WidgetsManager.h"
     #include "Menu/MenuRegistry.h"
     #include "Settings/DisplaySettingsStore.h"
+    #include "Settings/SettingsIds.h"
     #include "Webserver/DisplayPage.h" // optional /display page, compiles away without OFM-Network
     #include "Menu/Menu.h"
     #include "Widgets/About.h"
@@ -19,10 +20,8 @@
     #include "Widgets/Doom.h"
     #include "Widgets/FireWorks.h"
     #include "Widgets/Life.h"
-    #include "Widgets/Matrix.h"
     #include "Widgets/MatrixClassic.h"
     #include "Widgets/Pong.h"
-    #include "Widgets/Rain.h"
     #include "Widgets/Starfield.h"
     #ifdef WIDGET_CONSOLE
         #include "Widgets/Console.h"
@@ -511,7 +510,7 @@ void DeviceDisplay::wireMenuCallbacks()
         else if (o.key == "display_invert") o.defaultValue = MenuValue(_settingsStore.invert());
         else if (o.key == "auto_paging") o.defaultValue = MenuValue(_settingsStore.autoPaging());
         else if (o.key == "icon_menu") o.defaultValue = MenuValue(_settingsStore.iconMenu());
-        else if (o.key == "screensaver_type") o.defaultValue = MenuValue(static_cast<size_t>(_settingsStore.screenSaverType()));
+        else if (o.key == "screensaver_type") o.defaultValue = MenuValue(static_cast<size_t>(screenSaverListPos(_settingsStore.screenSaverType())));
         else if (o.key == "screensaver_after") o.defaultValue = MenuValue(static_cast<size_t>(_settingsStore.screenSaverMin()));
         else if (o.key == "sleep_after") o.defaultValue = MenuValue(static_cast<size_t>(_settingsStore.sleepMin()));
         else if (o.key == "homekey_up") o.defaultValue = MenuValue(static_cast<size_t>(_settingsStore.keyAction(HOME_KEY_UP)));
@@ -619,19 +618,19 @@ void DeviceDisplay::wireMenuCallbacks()
         logDebugP("iconMenu -> %u", val.getBool() ? 1u : 0u);
     });
 
-    // Screensaver: Dropdown index -> setScreenSaverType; store the raw index.
+    // Screensaver: dropdown position -> ScreenSaverType, which is what the store keeps.
     _menuWidget->registerOnValueChanged("screensaver_type", [this](const MenuConfig::MenuOption&, const MenuValue& val) {
-        const size_t idx = std::min(val.getSizeT(), static_cast<size_t>(SCREENSAVER_TYPE_COUNT - 1));
-        _settingsStore.setScreenSaverType(static_cast<uint8_t>(idx));
-        setScreenSaverType(static_cast<ScreenSaverType>(idx));
+        const uint8_t type = screenSaverTypeAt(static_cast<long>(val.getSizeT()));
+        _settingsStore.setScreenSaverType(type);
+        setScreenSaverType(static_cast<ScreenSaverType>(type));
         _settingsStore.requestSave();
-        logDebugP("screensaver -> idx %u", static_cast<unsigned>(idx));
+        logDebugP("screensaver -> type %u", static_cast<unsigned>(type));
     });
 
     // The screensaver radio picker opens on the value actually in effect (persisted
     // screenSaverType), not the static dropdown default, and the collapsed row reflects it too.
     _menuWidget->registerRadioIndexProvider("screensaver_type", [this]() -> size_t {
-        return static_cast<size_t>(_settingsStore.screenSaverType());
+        return static_cast<size_t>(screenSaverListPos(_settingsStore.screenSaverType()));
     });
 
     // The brightness slider opens on (and its collapsed row reflects) the persisted level.
@@ -758,7 +757,7 @@ void DeviceDisplay::initializeWidgets()
     // Boot logo (first widget, auto-remove after 3s)
     _widgetManager->addWidget(new WidgetBootLogo(3000, WidgetFlags::AutoRemove));
 
-    // Screensaver (default Matrix). Tracked in _screenSaverOwned so setScreenSaverType()
+    // Screensaver (default Matrix classic). Tracked in _screenSaverOwned so setScreenSaverType()
     // can free it (the WidgetsManager only borrows the pointer).
     _screenSaverOwned = new WidgetMatrixClassic(5000, WidgetFlags::AutoRemove, 8);
     _widgetManager->setScreenSaverWidget(_screenSaverOwned);
@@ -1468,17 +1467,11 @@ void DeviceDisplay::setScreenSaverType(ScreenSaverType type)
         case ScreenSaverType::Life:
             newWidget = new WidgetLife(5000, WidgetFlags::AutoRemove);
             break;
-        case ScreenSaverType::Matrix:
-            newWidget = new WidgetMatrix(5000, WidgetFlags::AutoRemove, 7);
-            break;
         case ScreenSaverType::MatrixClassic:
             newWidget = new WidgetMatrixClassic(5000, WidgetFlags::AutoRemove, 8);
             break;
         case ScreenSaverType::Pong:
             newWidget = new WidgetPong(5000, WidgetFlags::AutoRemove);
-            break;
-        case ScreenSaverType::Rain:
-            newWidget = new WidgetRain(5000, WidgetFlags::AutoRemove, 6);
             break;
         case ScreenSaverType::Starfield:
             newWidget = new WidgetStarfield(5000, WidgetFlags::AutoRemove, 10);
