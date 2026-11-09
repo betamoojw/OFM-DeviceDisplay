@@ -6,30 +6,12 @@
 
 namespace
 {
-    // Static maze (16x16). '#' = wall, '.' = floor. Kept in flash (PROGMEM-like const), no RAM copy.
-    constexpr uint8_t MAP_W = 16;
-    constexpr uint8_t MAP_H = 16;
-    const char MAP[MAP_H][MAP_W + 1] = {
-        "################",
-        "#..............#",
-        "#.####.####.##.#",
-        "#.#..#....#..#.#",
-        "#.#..####.#..#.#",
-        "#....#....#....#",
-        "#.####.##.####.#",
-        "#......##......#",
-        "#.####.##.####.#",
-        "#....#....#....#",
-        "#.#..####.#..#.#",
-        "#.#..#....#..#.#",
-        "#.####.####.##.#",
-        "#..............#",
-        "#..............#",
-        "################"};
+    // Static maze (16x16), one row per word, bit x set = wall at column x.
+    const uint16_t MAP[16] = {0xFFFF, 0x8001, 0xB7BD, 0xA425, 0xA5E5, 0x8421, 0xBDBD, 0x8181,
+                              0xBDBD, 0x8421, 0xA5E5, 0xA425, 0xB7BD, 0x8001, 0x8001, 0xFFFF};
 
     constexpr float MOVE_SPEED = 0.06f; // cells per tick
     constexpr float TURN_SPEED = 0.10f; // radians per tick
-    constexpr float FOV_PLANE = 0.66f;  // camera plane length -> ~66 deg FOV
     constexpr float PI_F = 3.14159265f;
 
     // Nearest cardinal direction index for a heading: 0=E(+x), 1=S(+y), 2=W(-x), 3=N(-y).
@@ -52,6 +34,24 @@ namespace
         else if (diff < -maxStep)
             diff = -maxStep;
         return cur + diff;
+    }
+
+    // Centered GFX text at a given size/row. CP437 enabled so 'Ç' (0x80) prints for the author name.
+    void centerText(Adafruit_SSD1306 *d, const char *txt, uint8_t size, int16_t y, int16_t W)
+    {
+        d->setTextSize(size);
+        d->setTextColor(WHITE);
+        d->cp437(true);
+        int16_t x = (W - static_cast<int16_t>(strlen(txt)) * 6 * size) / 2; // 6px cell per char at size 1
+        d->setCursor(x < 0 ? 0 : x, y);
+        d->print(txt);
+    }
+
+    // Author card: ERKAN / ÇOLAK, big (Ç = CP437 0x80).
+    void authorCard(Adafruit_SSD1306 *d, int16_t W)
+    {
+        centerText(d, "ERKAN", 3, 8, W);
+        centerText(d, "\x80OLAK", 3, 36, W);
     }
 } // namespace
 
@@ -166,12 +166,7 @@ void WidgetDoom::loop()
         if (now - _lastFrameStart < FRAME_MS) return;
         _lastFrameStart = now;
         step();
-        _snapPx = _px;
-        _snapPy = _py;
-        _snapDirX = cosf(_dir);
-        _snapDirY = sinf(_dir);
-        _snapPlaneX = -_snapDirY * FOV_PLANE;
-        _snapPlaneY = _snapDirX * FOV_PLANE;
+        rayCamAt(_cam, _px, _py, _dir);
         _display->display->clearDisplay();
         _renderCol = 0;
         _frameDone = false;
@@ -180,7 +175,7 @@ void WidgetDoom::loop()
     // Render a bounded chunk of columns this loop against the frozen snapshot (non-blocking DRAW).
     int16_t done = 0;
     for (; _renderCol < W && done < RENDER_COLS_PER_LOOP; ++_renderCol, ++done)
-        renderColumn(_renderCol, W, H);
+        rayColumn(_display->display, MAP, _cam, _renderCol, W, H);
 
     if (_renderCol >= W) // frame complete -> flush (the flush itself is also chunked/async)
     {
@@ -194,12 +189,6 @@ WidgetFlags WidgetDoom::getAction() const { return _action; }
 
 void WidgetDoom::setDisplayModule(i2cDisplay *displayModule) { _display = displayModule; }
 i2cDisplay *WidgetDoom::getDisplayModule() const { return _display; }
-
-bool WidgetDoom::isWall(int mx, int my) const
-{
-    if (mx < 0 || my < 0 || mx >= MAP_W || my >= MAP_H) return true;
-    return MAP[my][mx] == '#';
-}
 
 // Corridor navigation: walk STRAIGHT toward the current target cell centre (so the bot stays
 // centred in corridors, never clips a corner); the camera heading smoothly rotates toward the travel
@@ -240,7 +229,7 @@ void WidgetDoom::pickNextCell()
     for (int i = 0; i < 4; ++i)
     {
         if (i == back) continue; // don't immediately reverse
-        if (!isWall(cx + DX[i], cy + DY[i])) opts[n++] = i;
+        if (!rayWall(MAP, cx + DX[i], cy + DY[i])) opts[n++] = i;
     }
 
     int choose;
@@ -259,107 +248,6 @@ void WidgetDoom::pickNextCell()
     _tgtY = cy + DY[choose];
 }
 
-// Classic DDA raycaster for ONE screen column, using the per-frame FROZEN camera snapshot (so the
-// walls stay consistent while the frame is drawn a chunk of columns at a time). Monochrome depth cue
-// via dithering (near solid, far sparse) with a different pattern for the two wall orientations.
-void WidgetDoom::renderColumn(int16_t x, int16_t W, int16_t H)
-{
-    Adafruit_SSD1306 *d = _display->display;
-
-    const float cameraX = 2.0f * x / W - 1.0f;
-    const float rayX = _snapDirX + _snapPlaneX * cameraX;
-    const float rayY = _snapDirY + _snapPlaneY * cameraX;
-
-    int mapX = static_cast<int>(_snapPx);
-    int mapY = static_cast<int>(_snapPy);
-
-    const float deltaX = (rayX == 0.0f) ? 1e30f : fabsf(1.0f / rayX);
-    const float deltaY = (rayY == 0.0f) ? 1e30f : fabsf(1.0f / rayY);
-
-    int stepX, stepY;
-    float sideX, sideY;
-    if (rayX < 0)
-    {
-        stepX = -1;
-        sideX = (_snapPx - mapX) * deltaX;
-    }
-    else
-    {
-        stepX = 1;
-        sideX = (mapX + 1.0f - _snapPx) * deltaX;
-    }
-    if (rayY < 0)
-    {
-        stepY = -1;
-        sideY = (_snapPy - mapY) * deltaY;
-    }
-    else
-    {
-        stepY = 1;
-        sideY = (mapY + 1.0f - _snapPy) * deltaY;
-    }
-
-    // DDA
-    int side = 0;
-    for (uint8_t guard = 0; guard < 64; ++guard)
-    {
-        if (sideX < sideY)
-        {
-            sideX += deltaX;
-            mapX += stepX;
-            side = 0;
-        }
-        else
-        {
-            sideY += deltaY;
-            mapY += stepY;
-            side = 1;
-        }
-        if (isWall(mapX, mapY)) break;
-    }
-
-    const float perpDist = (side == 0) ? (sideX - deltaX) : (sideY - deltaY);
-    const float dist = (perpDist < 0.1f) ? 0.1f : perpDist;
-
-    int lineH = static_cast<int>(H / dist);
-    if (lineH > H) lineH = H;
-    int drawStart = H / 2 - lineH / 2;
-    int drawEnd = H / 2 + lineH / 2;
-    if (drawStart < 0) drawStart = 0;
-    if (drawEnd >= H) drawEnd = H - 1;
-
-    for (int16_t y = static_cast<int16_t>(drawStart); y <= drawEnd; ++y)
-    {
-        bool on;
-        if (side == 1)
-            on = true; // NS wall face: solid
-        else
-            on = ((x + y) & 1) == 0;                      // EW wall face: 50% checker (reads as shaded)
-        if (dist > 4.5f) on = on && (((x + y) & 3) == 0); // far walls: sparse
-        if (on) d->drawPixel(x, y, WHITE);
-    }
-    // crisp top/bottom edge for wall definition
-    if (lineH > 2)
-    {
-        d->drawPixel(x, static_cast<int16_t>(drawStart), WHITE);
-        d->drawPixel(x, static_cast<int16_t>(drawEnd), WHITE);
-    }
-}
-
-// Centered GFX text at a given size/row. CP437 enabled so we can print 'Ç' (0x80) for the author name.
-void WidgetDoom::drawCenteredText(const char *txt, uint8_t size, int16_t y, int16_t W)
-{
-    Adafruit_SSD1306 *d = _display->display;
-    d->setTextSize(size);
-    d->setTextColor(WHITE);
-    d->cp437(true);
-    const int16_t w = static_cast<int16_t>(strlen(txt)) * 6 * size; // 6px cell per char at size 1
-    int16_t x = (W - w) / 2;
-    if (x < 0) x = 0;
-    d->setCursor(x, y);
-    d->print(txt);
-}
-
 // Intro / DOOM banner: the word "DOOM" grows from small to (nearly) full-screen over ~1.6s, as if you
 // were running straight into the lettering, then holds framed. Non-blocking: one diffed flush per call.
 void WidgetDoom::drawTitle(uint32_t elapsed, int16_t W, int16_t H)
@@ -370,7 +258,7 @@ void WidgetDoom::drawTitle(uint32_t elapsed, int16_t W, int16_t H)
     uint8_t size = static_cast<uint8_t>(2 + (zt * 3) / 1600); // 2 -> 5
     if (size > 5) size = 5;
     const int16_t y = (H - 8 * size) / 2;
-    drawCenteredText("DOOM", size, y < 0 ? 0 : y, W);
+    centerText(d, "DOOM", size, y < 0 ? 0 : y, W);
     if (size >= 5) d->drawRect(0, 0, W, H, WHITE); // full-screen frame at the climax
     d->setTextSize(1);                             // leave the GFX state tidy for other widgets
     _display->displayBuff();
@@ -388,17 +276,16 @@ void WidgetDoom::drawBanner(uint8_t idx, uint32_t elapsed, int16_t W, int16_t H)
     d->clearDisplay();
     switch (idx)
     {
-        case 1: // author, roughly big:  ERKAN / ÇOLAK  (Ç = CP437 0x80)
-            drawCenteredText("ERKAN", 3, 8, W);
-            drawCenteredText("\x80OLAK", 3, 36, W);
+        case 1:
+            authorCard(d, W);
             break;
         case 2: // copyright
-            drawCenteredText("(C) 2026", 2, 12, W);
-            drawCenteredText("ERKAN \x80OLAK", 1, 42, W);
+            centerText(d, "(C) 2026", 2, 12, W);
+            centerText(d, "ERKAN \x80OLAK", 1, 42, W);
             break;
         default: // the display module
-            drawCenteredText("Device", 2, 10, W);
-            drawCenteredText("Display", 2, 34, W);
+            centerText(d, "Device", 2, 10, W);
+            centerText(d, "Display", 2, 34, W);
             break;
     }
     d->drawRect(0, 0, W, H, WHITE);

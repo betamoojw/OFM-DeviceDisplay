@@ -1,6 +1,7 @@
 #ifdef DEVICE_DISPLAY_MODULE
     #pragma once
     #include "../Widget.h"
+    #include "Raycaster.h"
 
 // WidgetDoom: a Wolfenstein/DOOM-style RAYCASTER screensaver. A bot auto-walks a small maze
 // and the first-person 3D view is rendered on the 128x64 OLED — vertical wall slices whose
@@ -57,9 +58,7 @@ class WidgetDoom : public Widget
     int16_t _renderCol = 0;                             // next column to render for the current frame
     bool _frameDone = true;                             // true -> start a fresh frame (step + snapshot) on the next loop
     uint32_t _lastFrameStart = 0;                       // millis() of the current frame start (fps cap)
-    float _snapPx = 0, _snapPy = 0;                     // bot position frozen for the frame being drawn
-    float _snapDirX = 0, _snapDirY = 0;                 // camera direction vector (frozen)
-    float _snapPlaneX = 0, _snapPlaneY = 0;             // camera plane vector (frozen)
+    RayCam _cam = {};                                   // bot camera frozen for the frame being drawn
 
     // Hidden-feature Easter egg: a "DOOM" title that ZOOMS to full-screen on start (as if you run into
     // the lettering), and while the bot walks the maze the screensaver periodically flashes full-screen
@@ -81,12 +80,9 @@ class WidgetDoom : public Widget
     static constexpr uint32_t ANIM_FRAME_MS = 90; // title/banner redraw throttle (~11 fps)
     static constexpr uint8_t BANNER_COUNT = 4;    // DOOM / name / copyright / DeviceDisplay
 
-    bool isWall(int mx, int my) const;                                          // true if map cell is solid / out of bounds
     void step();                                                                // advance the bot toward its target cell
     void pickNextCell();                                                        // choose the next target cell at a junction
-    void renderColumn(int16_t x, int16_t W, int16_t H);                         // raycast + draw ONE column (chunked)
     void drawTitle(uint32_t elapsed, int16_t W, int16_t H);                     // zooming full-screen DOOM
     void drawBanner(uint8_t idx, uint32_t elapsed, int16_t W, int16_t H);       // hidden-feature cards
-    void drawCenteredText(const char *txt, uint8_t size, int16_t y, int16_t W); // centered GFX text
 };
 #endif // DEVICE_DISPLAY_MODULE
