@@ -81,7 +81,7 @@ i2cDisplay::i2cDisplay() : lcdSettings()
  */
 i2cDisplay::~i2cDisplay()
 {
-    delete display;                             // Remove the display object from the memory (Adafruit_SSD1306)
+    delete static_cast<FastSSD1306 *>(display); // created as FastSSD1306 in InitDisplay()
     delete CustomI2C;                           // Remove the i2c object from the memory (TwoWire)
     if (_curDispBuffer) free(_curDispBuffer);   // Free the current display buffer if it was allocated
     if (_prevDispBuffer) free(_prevDispBuffer); // Free the previous display buffer if it was allocated
@@ -113,7 +113,7 @@ bool i2cDisplay::InitDisplay()
 #endif
 
     // display = new Adafruit_SSD1306(lcdSettings.width, lcdSettings.height, CustomI2C, lcdSettings.reset, 1000000UL, 1000000UL);
-    display = new Adafruit_SSD1306(lcdSettings.width, lcdSettings.height, CustomI2C, lcdSettings.reset, OPENKNX_GPIO_CLOCK, OPENKNX_GPIO_CLOCK);
+    display = new FastSSD1306(lcdSettings.width, lcdSettings.height, CustomI2C, lcdSettings.reset, OPENKNX_GPIO_CLOCK, OPENKNX_GPIO_CLOCK);
 
     // One Wire1 lock for the whole begin+config block. No-op on RP2040.
     {

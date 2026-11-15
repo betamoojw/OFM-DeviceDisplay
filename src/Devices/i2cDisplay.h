@@ -12,6 +12,7 @@
 
 #include "OpenKNX/I2C/ScheduledWire.h" // OPENKNX_I2C_SCHEDULER: queued display chunks on RP2040/RP2350
 #include "OpenKNX/I2C/Wire1Lock.h"     // shared Wire1 (display+PCA9557) mutex; no-op on RP2040
+#include "FastSSD1306.h"
 #include <Adafruit_SSD1306.h>
 #include <Wire.h>
 
