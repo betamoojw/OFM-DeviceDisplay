@@ -64,7 +64,8 @@ class MenuRegistry
     // the returned vector (freed by closeMenu), and the registry permanently
     // holds just the tiny module roots. A module root with the same identity as
     // a transient root wins (skips the transient), preserving "last wins".
-    std::vector<MenuOption> buildWith(const std::vector<MenuOption>& transientRoots) const;
+    // Taken by value so the caller can move the tree in instead of copying it.
+    std::vector<MenuOption> buildWith(std::vector<MenuOption> transientRoots) const;
 
     // Guarantee the root ends with exactly one About entry, regardless of
     // registration order. Merges duplicate About items (last wins) and, if no

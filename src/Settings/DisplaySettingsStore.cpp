@@ -265,9 +265,8 @@ void DisplaySettingsStore::requestSave(bool force)
     _dirty = true;
     _lastChangeMs = millis(); // restart the settle timer on every change
 
-    // Do NOT flush flash synchronously here: requestSave() runs deep in the button/menu callback
-    // chain and a flash write in that context reboots the RP2040. tickSave() commits from the loop.
-    // force=true is only used from top-level contexts (factory reset / processBeforeRestart).
+    // Normally tickSave() commits from the loop once the value settled. force=true writes at once (configured
+    // device only); display_reset, disp_save and the ddc console use it, i.e. also from the menu callback chain.
     if (force && knx.configured())
     {
         openknx.flash.save(true);

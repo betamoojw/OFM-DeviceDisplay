@@ -389,6 +389,12 @@ void MenuWidget::buildMenuFromRegistry()
         return;
     }
 
+    // Release the previous tree first (as closeMenu() does): a rebuild with the menu open, e.g. Display -> Reset,
+    // would otherwise hold the old and the new tree at once (about 25 KiB more peak heap than a normal open).
+    std::vector<MenuConfig::MenuOption>().swap(_currentMenu);
+    std::vector<std::vector<MenuConfig::MenuOption>>().swap(_menuStack);
+    std::vector<size_t>().swap(_selectedIndexStack);
+
     // Build the display-owned roots FRESH on every open and combine them with the registry's
     // persistent module roots via buildWith(). The heavy display tree (~17 KiB) is never stored in
     // the registry — it lives only in _currentMenu and is released again by closeMenu().
@@ -409,7 +415,7 @@ void MenuWidget::buildMenuFromRegistry()
         displayRoots.push_back(std::move(widgetsRoot));
     }
 
-    _currentMenu = _menuRegistry->buildWith(displayRoots);
+    _currentMenu = _menuRegistry->buildWith(std::move(displayRoots)); // moved in: no second copy of the tree
 
     // Merge the registry's callbacks into the local registries; a registry entry with the same key
     // overrides the local default (last wins).
@@ -986,8 +992,10 @@ void MenuWidget::selectItem()
                 }
                 else
                 {
-                    item.action();
-                    logDebugP("Action (%s) executed for item: %s", item.key.c_str(), item.label.c_str());
+                    // Log first: an action that rebuilds or closes the menu frees item.
+                    logDebugP("Action (%s) for item: %s", item.key.c_str(), item.label.c_str());
+                    auto act = item.action;
+                    act();
                 }
             }
             else

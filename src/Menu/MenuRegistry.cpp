@@ -130,14 +130,14 @@ std::vector<MenuRegistry::MenuOption> MenuRegistry::build() const
     return buildWith({});
 }
 
-std::vector<MenuRegistry::MenuOption> MenuRegistry::buildWith(const std::vector<MenuOption>& transientRoots) const
+std::vector<MenuRegistry::MenuOption> MenuRegistry::buildWith(std::vector<MenuOption> transientRoots) const
 {
     // Persistent roots first, then transient roots; a transient root that collides
-    // with a persistent one is skipped so the module override wins. Returning a copy
-    // keeps the transient tree unowned here, so it frees when the caller drops it.
+    // with a persistent one is skipped so the module override wins. The transient roots are moved
+    // into the result, so the registry never owns them and they free when the caller drops it.
     std::vector<MenuOption> result = _rootItems;
     result.reserve(result.size() + transientRoots.size());
-    for (const auto& t : transientRoots)
+    for (auto& t : transientRoots)
     {
         if (findRootIndex(t) >= 0)
         {
@@ -145,7 +145,7 @@ std::vector<MenuRegistry::MenuOption> MenuRegistry::buildWith(const std::vector<
                       identityOf(t).c_str());
             continue;
         }
-        result.push_back(t);
+        result.push_back(std::move(t));
     }
 
     // Stable insertion sort over indices: registration order among equal sortOrder, About forced to the
@@ -166,7 +166,7 @@ std::vector<MenuRegistry::MenuOption> MenuRegistry::buildWith(const std::vector<
         order[j] = v;
     }
     std::vector<MenuOption> sorted;
-    sorted.reserve(count);
+    sorted.reserve(count + 1); // room for the About entry appended below, no regrow
     for (size_t i = 0; i < count; ++i) sorted.push_back(std::move(result[order[i]]));
     result.swap(sorted);
 
