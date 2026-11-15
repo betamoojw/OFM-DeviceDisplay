@@ -93,8 +93,9 @@ class i2cDisplay
     void setRotation(bool flip180);
     bool isRotated() const { return _rotate180; }
 
-    // Raw 1-bit framebuffer (SSD1306 vertical packing) for the screenshot encoder; nullptr if uninit.
-    const uint8_t* getFramebuffer() const { return display ? display->getBuffer() : nullptr; }
+    // Last frame handed to the panel (1-bit, SSD1306 vertical packing) for live view and screenshots; a widget
+    // that draws a frame over several loops is never seen half drawn. Falls back to the GFX buffer before init.
+    const uint8_t* getFramebuffer() const { return _curDispBuffer ? _curDispBuffer : (display ? display->getBuffer() : nullptr); }
 
   private:
     uint8_t _brightness = 100;
@@ -105,8 +106,8 @@ class i2cDisplay
 
     // #define BUFFER_SIZE (128 * ((64 + 7 ) / 8))
     uint16_t _sizeDispBuff;
-    uint8_t* _curDispBuffer;  // Buffer size!
-    uint8_t* _prevDispBuffer; // Buffer size!
+    uint8_t* _curDispBuffer = nullptr;  // Buffer size!
+    uint8_t* _prevDispBuffer = nullptr; // Buffer size!
 
     // Non-blocking flush: displayBuff() diffs and records dirty page/column ranges (no I2C); loop()
     // pushes at most FLUSH_PAGES_PER_LOOP dirty pages per iteration so a full-frame change never blocks.
