@@ -187,9 +187,6 @@ class WidgetsManager // Manages the widget queue and state machine
     // disabled widgets. Always switch even while paused and reset the display timer. Wraps around.
     void nextWidgetManual();
     void prevWidgetManual();
-    // Switch the rotation to this DefaultWidget, as a manual switch would. Only from the rotation view
-    // (no status widget, menu or screensaver up). Returns true when the widget is shown.
-    bool showDefaultWidget(Widget* widget);
     // Pin: this DefaultWidget holds the rotation view instead of the rotation (one at a time, the last call wins).
     // Status widgets, the menu and the power-save stages still go first; LEFT/RIGHT/UP/DOWN still work, and
     // PIN_RETURN_MS after the last of those keys the pinned widget comes back, on its first page. A disabled
