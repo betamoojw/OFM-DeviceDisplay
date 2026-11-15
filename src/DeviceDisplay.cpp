@@ -958,9 +958,12 @@ void DeviceDisplay::handleButtonEvent(const ButtonEvent& event)
 
     // KONAMI: record every PRESS here - BEFORE the swallow/wake/routing below - so the code also works on a
     // dark panel. It opens About unlocked (not in ProgMode). Both OKs are dropped with their releases, so neither
-    // runs the menu entry under the cursor. Not counted while the scene runs: the sequence is a normal key series there.
+    // runs the menu entry under the cursor. Not counted while the scene runs or a menu editor is open: the sequence
+    // is a normal key series there; the first OK would be dropped and the second would close the menu, losing the edit.
     const bool sceneRuns = _aboutActive && _aboutWidget->sceneActive();
-    if (event.action == ButtonAction::PRESS && !sceneRuns)
+    const bool editing = _menuWidget && _menuWidget->editorActive();
+    if (editing) _konamiPos = 0;
+    if (event.action == ButtonAction::PRESS && !sceneRuns && !editing)
     {
         const bool done = matchKonami(event.type);
         if (!knx.progMode() && (done || _konamiPos == KONAMI_FIRST_OK))

@@ -44,6 +44,8 @@ class MenuWidget : public Widget
     void externalStop();
     // Close the menu from an external router (LEFT long-press exit); safe when already closed.
     void externalClose() { closeMenu(); }
+    // True while an editor (text, number, IP, picker, slider, reorder, confirm) owns the keys.
+    bool editorActive() const { return _mode != MenuMode::Normal; }
 
     // Logger prefix
     const std::string logPrefix() { return "MenuWidget"; }

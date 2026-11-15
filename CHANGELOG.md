@@ -6,7 +6,7 @@ Entries are grouped by module version; every line traces to a commit in this rep
 ## Unreleased
 
 * Change (screensavers): Matrix and Rain are removed; Matrix Classic is listed as "Matrix" and is the default. The stored value stays the type number, a stored Matrix (5) or Rain (8) loads as Matrix. Menu, web page and `ddc config` show the list position 0..8
-* Change (KONAMI): the sequence opens About and no longer restores the display defaults; that is done by Display -> Reset in the menu or `ddc config reset`. Neither of its two OKs selects a menu entry or arms a gesture (the first one after the eight arrows is dropped). While ProgMode is on, it opens nothing and drops no key
+* Change (KONAMI): the sequence opens About and no longer restores the display defaults; that is done by Display -> Reset in the menu or `ddc config reset`. Neither of its two OKs selects a menu entry or arms a gesture (the first one after the eight arrows is dropped). While ProgMode is on or a menu editor is open, it opens nothing and drops no key
 * Change (About): every key goes to About while it is shown, so no hold gesture can arm there; a direction key, OK in an About opened from the menu, or 20 s without a key closes it, and the release of the closing key is swallowed
 * Fix (live view): `/display/fb.bin`, the live stream and screenshots show the last frame sent to the panel; the Doom screensaver draws a frame over several loops, so the view showed half-drawn frames
 * Fix (menu): a rebuild with the menu open, e.g. Display -> Reset, frees the old menu tree before it builds the new one instead of holding both, and moves the display entries into the new tree instead of copying them
