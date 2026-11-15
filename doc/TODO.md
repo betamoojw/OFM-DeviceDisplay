@@ -480,4 +480,4 @@ weil das Schreiben in den Flash noch vor dem Absturz passiert.
 - Übrig im Ablauf von `display_reset`: `_menuWidget->rebuild()` aus der eigenen Menü-Aktion heraus, während
   `handleConfirmButton()` und `selectItem()` noch laufen, und `showToast()`.
 - Nächster Schritt: seriell mitschneiden, was beim Absturz kommt, dann `rebuild()` ansehen.
-- Vermutlich bei KONAMI genauso (`triggerKonamiRestore()`, gleicher Aufbau). Nicht gemessen.
+- KONAMI setzt seit 2026-11-08 nichts mehr zurück, sondern öffnet About; der Fall betrifft nur noch `display_reset`.

@@ -83,7 +83,7 @@ errorWidget->addAction(DisplayEnabled); // → Shown immediately!
 - [ ] **Auto / Idle Gestures**: menu-triggered auto-countdown actions + idle gesture hints (GEST-05 / GEST-09)
 
 ### Nice-to-have (optional · unscheduled)
-- [x] **Sequence pattern shortcut**: KONAMI recovery (↑ ↑ ↓ ↓ ← → ← → OK OK) restores + saves display defaults, blind. See *Display tuning & KONAMI recovery*.
+- [x] **Sequence pattern shortcut**: KONAMI (↑ ↑ ↓ ↓ ← → ← → OK OK) opens About. See *Display tuning & KONAMI*.
 - [ ] **Multi-button / chorded shortcuts**: chorded keys (e.g. UP+DOWN) for further hidden/special actions — low priority, may never ship.
   
 
@@ -917,10 +917,10 @@ Display settings are edited in the on-screen menu and **persisted in the DeviceD
 
 > `HomeKeyAction` **must** stay value-compatible with `GestureAction` (e.g. `DisplayOff = 4`) so the persisted key map feeds the gesture engine directly.
 
-### Display tuning & KONAMI recovery
-The **Anzeige → Display** submenu exposes hardware tuning — 180° rotation, pre-charge, refresh — with **live preview but manual save**: a bad value is applied to the panel so you can judge it, but is persisted only via the submenu's **Speichern** (Nein/Ja) action. Not saving + a reboot reverts it, so a mis-tuned panel can never brick across restarts. **Zurücksetzen** and the KONAMI code *do* restore these three to their safe defaults (that is a recovery, not a risk).
+### Display tuning & KONAMI
+The **Display → Panel** submenu exposes hardware tuning — 180° rotation, pre-charge, refresh — with **live preview but manual save**: a bad value is applied to the panel so you can judge it, but is persisted only via the submenu's **Save** action (No/Yes). Not saving + a reboot reverts it, so a mis-tuned panel can never brick across restarts. **Display → Reset** *does* restore them with all other display values to their safe defaults (that is a recovery, not a risk).
 
-**KONAMI recovery** — press **↑ ↑ ↓ ↓ ← → ← → OK OK** on the buttons. It is matched before any wake/routing, so it works **blind** (display off or mis-configured): it restores ALL display defaults, applies + **saves** them, wakes the panel and redraws. This is the escape hatch when a *saved* config left the screen unreadable.
+**KONAMI** — press **↑ ↑ ↓ ↓ ← → ← → OK OK** on the buttons. It is matched before any wake/routing, so it also works on a dark panel, and opens About (not while ProgMode is on). Both OKs are consumed: the first one after the eight arrows is dropped, so neither runs the menu entry under the cursor. A direction key, OK in an About opened from the menu, or 20 s without a key closes it; while it is shown no hold gesture arms. Display defaults are restored only by **Display → Reset** in the menu or `ddc config reset`.
 
 ### `ddc` console commands
 | Command | Effect |
@@ -931,7 +931,7 @@ The **Anzeige → Display** submenu exposes hardware tuning — 180° rotation, 
 | `ddc i` | widget manager + menu settings + memory |
 | `ddc l` | list all widgets |
 
-The whole `ddc` console is part of the developer console and is compiled in only with **`-D OPENKNX_CONSOLE_DEV`** (the switch OGM-Common and the other modules use for their developer and test commands). **`-D DDC_CONSOLE_DISABLE`** strips it again where flash is short (e.g. RP2040 with 2 MB) while the other developer commands stay. Without it the menu, settings persistence and the KONAMI recovery keep working.
+The whole `ddc` console is part of the developer console and is compiled in only with **`-D OPENKNX_CONSOLE_DEV`** (the switch OGM-Common and the other modules use for their developer and test commands). **`-D DDC_CONSOLE_DISABLE`** strips it again where flash is short (e.g. RP2040 with 2 MB) while the other developer commands stay. Without it the menu and settings persistence keep working.
 
 ### Per-widget settings (`WidgetSetting[WIDGET_SETTINGS_MAX = 16]`)
 Each widget's rotation config is stored by a stable **FNV-1a name hash** (fixed-size record), so records survive reboots/builds regardless of widget registration order:
