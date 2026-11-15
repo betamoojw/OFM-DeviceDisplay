@@ -1,0 +1,996 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="author" content="Erkan Çolak">
+<title>OpenKNX Display Design</title>
+<style>
+/* --- lib/OFM-Network/web/assets/base.css - the device web interface, inlined verbatim --- */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* Keep the browser from resizing text on its own: mobile Safari inflates long paragraphs to compensate
+   for a scaled-down layout, which made a .8em help text render larger than the .88em table above it. */
+html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+}
+
+button, input, select, textarea {
+    font-family: inherit;
+    font-size: inherit;
+    padding: 6px;
+    margin: revert;
+    border: revert;
+    border-radius: 0;
+    background: revert;
+    color: revert;
+}
+
+body {
+    display: flex;
+    min-height: 100vh;
+    font-family: sans-serif;
+    background: #fff;
+    color: #111;
+}
+
+nav {
+    width: 180px;
+    min-width: 180px;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 0;
+    height: 100vh;
+    position: sticky;
+    top: 0;
+    overflow-y: auto;
+    box-shadow: 3px 0 4px rgba(0, 0, 0, .18);
+    z-index: 1;
+}
+
+.logo {
+    width: 150px;
+    padding: 0 24px;
+    margin-top: 12px;
+    margin-bottom: 12px;
+}
+
+.logo img {
+    width: 100%;
+    height: auto;
+}
+
+nav a.menu {
+    display: block;
+    width: 100%;
+    padding: 11px 24px;
+    color: #aaa;
+    text-decoration: none;
+    font-size: .9em;
+    border-left: 3px solid transparent;
+    transition: all .15s;
+}
+
+nav a.menu:hover {
+    background: #1a1a1a;
+    color: #fff;
+    border-left-color: #449841;
+}
+
+a.menu.active {
+    color: #fff;
+    border-left-color: #449841;
+    background: #111;
+}
+
+.logo a {
+    display: block;
+    padding: 0;
+}
+
+.nav-wiki {
+    margin-top: auto;
+    width: 100%;
+    padding: 8px 0 8px;
+    text-align: center;
+}
+
+.nav-wiki a, .nav-wiki a:hover {
+    color: #555;
+    font-size: .8em;
+    padding: 0;
+    border: none;
+    background: none;
+    display: inline;
+    width: auto;
+    text-decoration: none;
+}
+
+.nav-wiki a:hover {
+    color: #888;
+}
+
+.menu-container {
+    width: 100%;
+    margin: 12px 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.nav-footer {
+    width: 100%;
+    padding: 12px 24px 12px 27px;
+    border-top: 1px solid #222;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.nav-footer a {
+    color: #666;
+    text-decoration: none;
+}
+
+.prog-status {
+    display: flex;
+    align-items: center;
+    color: #666;
+    font-size: .8em;
+    gap: 8px;
+}
+
+/* /prog ist ein POST-Formular; der Button soll wie der frühere Link aussehen. */
+.prog-status-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.prog-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.dot-green { background: #449841; }
+.dot-red { background: #ff5555; }
+.dot-off { background: #555; }
+
+.nav-firm {
+    font-weight: bold;
+    font-size: .8em;
+    color: #aaa;
+}
+
+.nav-info {
+    display: flex;
+    align-items: center;
+    color: #666;
+    font-size: .8em;
+    gap: 8px;
+}
+
+main {
+    flex: 1;
+    padding: 2em;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+/* Loading overlay from OpenKNX.need() */
+.ld {
+    position: absolute;
+    inset: 0;
+    padding-top: 6em;
+    text-align: center;
+    background: rgba(255, 255, 255, .85);
+    color: #666;
+}
+
+.meta {
+    color: #666;
+    font-size: .8em;
+    margin-bottom: 1.5em;
+}
+
+.red { color: #ff5555; }
+.green { color: #449841; }
+.yellow { color: #ffff55; }
+.gray { color: #888; }
+
+h1 {
+    font-size: 1.25em;
+    font-weight: 600;
+    margin-bottom: 1.5em;
+    color: #111;
+}
+
+h2 {
+    font-size: .95em;
+    font-weight: 600;
+    margin: 1.5em 0 .75em;
+    color: #449841;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: .5em;
+    font-size: .88em;
+}
+
+td, th {
+    text-align: left;
+    padding: 7px 14px;
+}
+
+th {
+    background: #eee;
+    color: #000;
+    border-bottom: 1px solid #bbb;
+}
+
+td {
+    border-top: 1px solid #eee;
+}
+
+tr:last-child td {
+    border-bottom: 1px solid #eee;
+}
+
+.attribute-table td:first-child {
+    color: #888;
+    white-space: nowrap;
+    width: 200px;
+}
+
+main a {
+    color: #449841;
+    text-decoration: none;
+    transition: color .15s;
+}
+
+main a:hover {
+    color: #5ab857;
+    text-decoration: underline;
+}
+
+.container {
+    max-width: 960px;
+}
+
+/* Phone: stack page content and move device status into a fixed footer. */
+@media (max-width: 640px) {
+    body {
+        flex-direction: column;
+        padding-bottom: 56px; /* keeps content clear of the fixed footer below */
+    }
+
+    nav {
+        width: auto;
+        min-width: 0;
+        height: auto;
+        box-shadow: 0 3px 4px rgba(0, 0, 0, .18);
+    }
+
+    .nav-footer {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 2; /* above nav (1), so main scrolls underneath */
+        background: #000;
+        flex-direction: row;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 6px 18px;
+        padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); /* clears the iPhone home bar */
+    }
+}
+
+/* Phone: one bar with the logo left, the menu on one line and a burger at the right end; entries that
+   do not fit (and wiki/forum) move into the burger menu (base.js). The device block stays at the bottom. */
+.nav-burger, .nav-more { display: none; }
+
+@media (max-width: 640px) {
+    nav {
+        flex-direction: row;
+        align-items: center;
+        padding: 0 6px 0 12px;
+        position: sticky;
+        top: 0;
+        overflow: visible;
+    }
+
+    .logo {
+        width: auto;
+        padding: 0;
+        margin: 0 8px 0 0;
+        flex: none;
+    }
+
+    .logo img {
+        height: 30px;
+        width: auto;
+    }
+
+    .menu-container {
+        flex-direction: row;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        margin: 0;
+        width: auto;
+    }
+
+    nav a.menu {
+        width: auto;
+        flex: none;
+        white-space: nowrap;
+        padding: 14px 10px 11px;
+        border-left: 0;
+        border-bottom: 3px solid transparent;
+    }
+
+    nav a.menu:hover, a.menu.active {
+        border-bottom-color: #449841;
+    }
+
+    .nav-wiki {
+        display: none;
+    }
+
+    .nav-burger {
+        display: block;
+        flex: none;
+        background: none;
+        border: 0;
+        color: #ddd;
+        font-size: 1.5em;
+        line-height: 1;
+        padding: 8px 10px;
+        cursor: pointer;
+    }
+
+    .nav-more.open {
+        display: flex;
+        flex-direction: column;
+        position: absolute;
+        right: 6px;
+        top: 100%;
+        min-width: 190px;
+        background: #000;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, .35);
+        z-index: 3;
+    }
+
+    .nav-more a.menu {
+        padding: 12px 16px;
+        border-bottom: 0;
+        border-left: 3px solid transparent;
+    }
+
+    .nav-more a.menu.active {
+        border-left-color: #449841;
+    }
+}
+
+/* --- report layer on top of it --- */
+/* The device serves one page at a time and puts its menu in a column; a report is read top to
+   bottom, so the same navigation runs across the top and the imprint sits at the foot. */
+body { display: block; min-height: 100vh; }
+nav { position: sticky; top: 0; width: auto; min-width: 0; height: auto;
+      flex-direction: row; align-items: center; flex-wrap: wrap;
+      padding: 0 18px; overflow: visible; box-shadow: 0 2px 6px rgba(0, 0, 0, .18); }
+.logo { width: 118px; padding: 0; margin: 9px 22px 9px 0; }
+.logo svg { width: 100%; height: auto; display: block; }
+.menu-container { flex-direction: row; flex-wrap: wrap; width: auto; margin: 0; }
+nav a.menu { width: auto; padding: 15px 14px; border-left: 0; border-bottom: 3px solid transparent; }
+nav a.menu:hover { border-left-color: transparent; border-bottom-color: #449841; }
+a.menu.active { border-left-color: transparent; border-bottom-color: #449841; }
+.nav-status { margin-left: auto; display: flex; align-items: center; gap: 14px; padding: 8px 0; }
+.nav-status .nav-firm { color: #aaa; }
+.dot-amber { background: #e6a700; }
+
+footer { background: #000; color: #777; margin-top: 3.5em; padding: 22px 2em calc(22px + env(safe-area-inset-bottom));
+         font-size: .78em; line-height: 1.6; display: flex; flex-wrap: wrap; gap: 6px 36px; }
+footer b { color: #bbb; font-weight: 600; }
+footer .col { min-width: 210px; }
+footer a { color: #449841; text-decoration: none; }
+
+main { padding: 1.8em 2em 2em; }
+/* The report uses the window it is given: a 300-case table is the whole point of the page. */
+.container { max-width: none; width: 100%; }
+h1 { margin-bottom: .35em; }
+.meta { margin-bottom: 1.6em; }
+.meta b { color: #444; font-weight: 600; }
+
+/* Callouts */
+.warn, .note { border-left: 3px solid #e6a700; background: #fdf8e8; padding: 11px 15px; margin: 0 0 1.2em; font-size: .86em; color: #5d4c14; }
+.note { border-left-color: #449841; background: #f2f8f1; color: #2f5c2d; }
+
+/* Anything that filters the table looks and behaves the same, wherever it sits. */
+.chip { display: inline-flex; align-items: center; gap: 5px; font: inherit; font-size: .74em; font-weight: 600;
+        padding: 3px 9px; border: 1px solid #ddd; background: #fafafa; color: #555; cursor: pointer;
+        border-radius: 2px; white-space: nowrap; transition: background .12s, border-color .12s; }
+.chip:hover { border-color: #449841; color: #2f7a2c; background: #f2f8f1; }
+.chip[aria-pressed="true"] { background: #449841; border-color: #449841; color: #fff; }
+.chip.ok { color: #2f7a2c; border-color: #bcdcba; background: #f2f8f1; }
+.chip.bad { color: #c62828; border-color: #efbfbf; background: #fdf3f3; }
+.chip.notrun { color: #8a6a1f; border-color: #e8d9a5; background: #fdf8e8; }
+.chip.skip, .chip.na { color: #777; border-color: #ddd; background: #fafafa; }
+.chip.noproof { color: #b06a00; border-color: #e2c08a; background: #fffaf0; }
+.chip.ok[aria-pressed="true"] { background: #2f7a2c; border-color: #2f7a2c; color: #fff; }
+.chip.bad[aria-pressed="true"] { background: #c62828; border-color: #c62828; color: #fff; }
+.chip.notrun[aria-pressed="true"] { background: #8a6a1f; border-color: #8a6a1f; color: #fff; }
+.chip.skip[aria-pressed="true"], .chip.na[aria-pressed="true"] { background: #777; border-color: #777; color: #fff; }
+.chip.noproof[aria-pressed="true"] { background: #b06a00; border-color: #b06a00; color: #fff; }
+.chip.pa { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 500; }
+
+/* --- handbook layer: OLED figures, rule lists, side-by-side rows --- */
+/* code window */
+.catrow canvas,#compGrid canvas{cursor:pointer}
+dialog.codeDlg{margin:auto;border:1px solid #ccc;padding:0;width:min(920px,calc(100vw - 32px));max-height:calc(100vh - 48px);box-shadow:0 8px 28px rgba(0,0,0,.25)}
+dialog.codeDlg::backdrop{background:rgba(0,0,0,.45)}
+.codeDlg .bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#000;color:#fff}
+.codeDlg .bar b{flex:1;font-weight:600;font-size:.9em}
+.codeDlg .bar .btn{background:#111;color:#ddd;border-color:#333}
+.codeDlg .bar .btn:hover{background:#449841;border-color:#449841;color:#fff}
+.codeDlg .code{border:0;margin:0;max-height:calc(100vh - 140px);overflow:auto}
+.codeDlg .hint{padding:8px 14px;font-size:.78em;color:#888;border-top:1px solid #eee}
+figcaption .chip.ist,figcaption .chip.neu,.ic .chip{display:none}
+main input[type=search],main input[type=text]{border:1px solid #ccc;background:#fff;margin:0;padding:5px 10px;font-size:.86em}
+.filter{background:#fafafa;border:1px solid #e6e6e6;padding:10px 14px;margin-bottom:1.6em}
+.filter .row{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.active-label{color:#888;font-size:.78em;text-transform:uppercase;letter-spacing:.06em}
+.grp{display:inline-flex;gap:4px;margin-right:10px}
+.grp .chip{margin:0;cursor:pointer}
+nav a.menu{padding:15px 11px;font-size:.88em}
+
+:root{--txt:#111;--dim:#666;--mut:#888;--acc:#449841;--hi:#2f7a2c;--dk:#449841;--ok:#2f7a2c;--fail:#c62828;--warn:#8a6a1f;--new:#1d6fa5;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;--line:#e3e3e3;--line2:#ccc;--panel:#fafafa;--panel2:#f3f3f3}
+[hidden]{display:none!important}
+body.simple .xp,body.simple figcaption .src{display:none!important}
+a.menu[aria-current="page"]{color:#fff;background:#111;border-bottom-color:#449841}
+.nav-status{flex-wrap:wrap}
+p{max-width:75ch;line-height:1.5}
+li{line-height:1.5}
+h2{margin:0}
+h3{font-size:.92em;font-weight:600;margin:0}
+h4{font-size:.9em;font-weight:600}
+code,.mono{font-family:var(--mono);font-size:.88em}
+code{background:#f3f3f3;border:1px solid #e3e3e3;padding:0 .3em}
+.eyebrow{display:none}
+.dim{color:var(--dim)}
+.view{display:grid;gap:2em}
+.vhead{display:grid;gap:.5em}
+.vhead p{color:#666}
+.block{display:grid;gap:12px}
+.cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:28px;align-items:start}
+@media (max-width:980px){.cols{grid-template-columns:minmax(0,1fr)}}
+/* OLED figure: the panel itself stays black */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px}
+.grid.big{grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
+figure.scr{margin:0;display:grid;gap:6px;min-width:0}
+.bez{position:relative;background:#0b0f0c;padding:8px;border-radius:10px;box-shadow:inset 0 0 26px rgba(0,0,0,.9),0 2px 6px rgba(0,0,0,.25)}
+.bez::after{content:"";position:absolute;inset:8px;pointer-events:none;background:repeating-linear-gradient(to bottom,rgba(0,0,0,.22) 0 1px,transparent 1px 3px)}
+.bez canvas{display:block;width:100%;height:auto;aspect-ratio:2/1;image-rendering:pixelated}
+.bez svg.ov{position:absolute;inset:8px;width:calc(100% - 16px);height:calc(100% - 16px);pointer-events:none}
+figcaption{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:.84em;min-width:0}
+figcaption b{font-weight:600}
+figcaption .src{font:.76em/1.3 var(--mono);color:#888;overflow-wrap:anywhere}
+figcaption .note{flex-basis:100%;color:#666;font-size:.95em;background:none;border:0;padding:0;margin:0}
+.chip{cursor:default}
+.chip.ist{color:#2f7a2c;border-color:#bcdcba;background:#f2f8f1}
+.chip.neu{color:#1d6fa5;border-color:#b5d2e8;background:#f1f7fc}
+.chip.bug{color:#c62828;border-color:#efbfbf;background:#fdf3f3}
+/* overview: facts as summary tiles */
+.hero{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:28px;align-items:center}
+@media (max-width:980px){.hero{grid-template-columns:minmax(0,1fr)}}
+.hero .lead{color:#444}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px}
+.fact{border:1px solid #e3e3e3;border-top:3px solid #449841;padding:12px 14px;background:#fff}
+.fact b{display:block;font-size:1.6em;font-weight:600;line-height:1;font-variant-numeric:tabular-nums;color:#2f7a2c}
+.fact span{display:block;color:#888;font-size:.72em;margin-top:5px;text-transform:uppercase;letter-spacing:.07em}
+/* rules as attribute rows */
+.rules{display:grid;border-top:1px solid #eee}
+.rule{display:grid;grid-template-columns:52px minmax(0,1fr);gap:12px;padding:8px 0;border-bottom:1px solid #eee}
+.rule .id{font:600 .8em/1.7 var(--mono);color:#449841}
+.rule h4{margin:0 0 2px}
+.rule p{color:#666;font-size:.88em}
+/* rows that set two figures side by side: bench cards */
+.find,.swap,.catrow{border:1px solid #e3e3e3;padding:14px 16px;background:#fff}
+.find{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr);gap:16px;align-items:center}
+@media (max-width:820px){.find{grid-template-columns:minmax(0,1fr)}}
+.find h3{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.find p{color:#666;font-size:.88em;margin-top:6px}
+.pair{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px}
+.catrow{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);grid-template-areas:"t t" "a x";gap:10px 16px;align-items:start}
+.catrow>figure{grid-area:a}.catrow>.dim{grid-area:a}
+@media (max-width:820px){.catrow{grid-template-columns:minmax(0,1fr);grid-template-areas:"t" "a" "x"}}
+.num{font-weight:600;font-size:.8em;color:#fff;background:#449841;padding:3px 7px;min-width:2.2em;text-align:center;font-variant-numeric:tabular-nums}
+.swap{display:grid;grid-template-columns:minmax(0,1fr) 22px minmax(0,1fr) minmax(0,1.05fr);grid-template-areas:"t t t t" "a r b x";gap:10px 12px;align-items:center}
+.sw-t{grid-area:t;display:flex;gap:10px;align-items:center;flex-wrap:wrap}.swap>figure:nth-of-type(1){grid-area:a}.swap>figure:nth-of-type(2){grid-area:b}.sw-a{grid-area:r;font-style:normal;color:#449841;text-align:center;font-size:1.2em}.sw-x{grid-area:x;display:grid;gap:8px;font-size:.86em;color:#555}
+@media (max-width:1100px){.swap{grid-template-columns:minmax(0,1fr) 18px minmax(0,1fr);grid-template-areas:"t t t" "a r b" "x x x"}}
+.out,.in{font-weight:600;font-size:.72em;letter-spacing:.04em;padding:2px 6px;margin-right:6px;text-transform:uppercase;border:1px solid}
+.out{color:#c62828;border-color:#efbfbf;background:#fdf3f3}.in{color:#1d6fa5;border-color:#b5d2e8;background:#f1f7fc}
+.gone{text-decoration:line-through;text-decoration-color:#c62828;color:#888}
+.story{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(200px,230px) 14px;gap:8px;overflow-x:auto;padding-bottom:10px;align-items:center}
+.story .arr{font-style:normal;color:#aaa;text-align:center;align-self:start;margin-top:48px}
+.step{font-weight:600;font-size:.72em;color:#fff;background:#449841;padding:3px 6px}
+.tbl{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tbl table{min-width:620px}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums}
+/* icon pool */
+.icons{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:10px}
+.ic{border:1px solid #e3e3e3;background:#fff;padding:10px;margin:0;display:grid;gap:6px;justify-items:center;cursor:pointer;color:inherit;font:inherit;text-align:center}
+.ic:hover{box-shadow:0 2px 8px rgba(0,0,0,.10)}
+.ic[aria-pressed="true"]{border-color:#449841;box-shadow:inset 0 0 0 1px #449841}
+.ic canvas{width:72px;height:72px;image-rendering:pixelated;background:#071407;border-radius:4px}
+.ic span{font:.74em/1.2 var(--mono);color:#666}
+.ic em{font-style:normal}
+.code{background:#fafafa;border:1px solid #e6e6e6;padding:12px;font:.8em/1.5 var(--mono);color:#111;overflow-x:auto;white-space:pre}
+.btn{background:#fafafa;border:1px solid #ddd;color:#555;margin:0;padding:4px 10px;font-weight:600;font-size:.8em;cursor:pointer}
+.btn:hover{border-color:#449841;color:#2f7a2c;background:#f2f8f1}
+/* menu simulator */
+.sim{display:grid;grid-template-columns:minmax(0,1fr) 168px;gap:20px;align-items:center}
+@media (max-width:640px){.sim{grid-template-columns:minmax(0,1fr)}}
+.pad{display:grid;grid-template-columns:repeat(3,48px);grid-template-rows:repeat(3,48px);gap:6px;justify-content:center}
+.pad button{margin:0;border:1px solid #ccc;background:#fafafa;color:#111;font-weight:700;cursor:pointer}
+.pad button:active{background:#449841;color:#fff}
+.pad .u{grid-column:2;grid-row:1}.pad .l{grid-column:1;grid-row:2}.pad .o{grid-column:2;grid-row:2;border-radius:50%;color:#449841}.pad .r{grid-column:3;grid-row:2}.pad .d{grid-column:2;grid-row:3}
+.log{font:.78em/1.5 var(--mono);color:#666;min-height:3em}
+.keys{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.key{border:1px solid #e3e3e3;padding:14px 16px;background:#fff}
+.key h4{margin:0 0 .7em;font-size:.92em}
+.key dl{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 10px;font-size:.84em}
+.key dt{font-family:var(--mono)}
+.key dd{margin:0;color:#888}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font:.8em/1 var(--mono)}
+.flow span{border:1px solid #ddd;padding:7px 9px;background:#fafafa}
+.flow i{font-style:normal;color:#aaa}
+.filters{display:flex;gap:6px;flex-wrap:wrap}
+.chipf{display:inline-flex;align-items:center;font:inherit;font-size:.74em;font-weight:600;padding:3px 9px;margin:0;border:1px solid #ddd;background:#fafafa;color:#555;cursor:pointer;border-radius:2px;white-space:nowrap}
+.chipf:hover{border-color:#449841;color:#2f7a2c;background:#f2f8f1}
+.chipf[aria-pressed="true"]{background:#449841;border-color:#449841;color:#fff}
+.mod{display:grid;gap:12px}
+.mod h3{padding-bottom:6px;border-bottom:1px solid #eee}
+main ul,main ol{padding-left:1.3em}
+@media (max-width:640px){
+  nav{flex-wrap:nowrap;padding:0 0 0 12px}
+  nav .logo{width:64px;margin:8px 8px 8px 0;flex:none}
+  .menu-container{flex-wrap:nowrap;overflow-x:auto;flex:1;min-width:0;scrollbar-width:none}
+  .menu-container::-webkit-scrollbar{display:none}
+  nav a.menu{padding:14px 9px 11px;white-space:nowrap;flex:none}
+  .nav-status{display:none}
+  .filter{position:static}
+}
+</style>
+</head>
+<body>
+<nav aria-label="Kapitel">
+<div class="logo"><svg role="img" aria-label="OpenKNX" viewBox="0 0 402 242" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M1 50C1 34.7 5.1 22.7 13.3 14C21.6 5.3 32.2 1 45.2 1C53.7 1 61.4 3 68.3 7.1C75.1 11.2 80.3 16.9 83.9 24.2C87.5 31.4 89.3 39.7 89.3 48.9C89.3 58.3 87.4 66.7 83.6 74.1C79.9 81.5 74.5 87.1 67.6 90.9C60.6 94.7 53.2 96.6 45.2 96.6C36.5 96.6 28.7 94.5 21.8 90.3C15 86.1 9.8 80.3 6.3 73.1C2.8 65.8 1 58.1 1 50ZM13.6 50.2C13.6 61.3 16.6 70.1 22.5 76.5C28.5 82.9 36.1 86.1 45.1 86.1C54.3 86.1 61.8 82.9 67.8 76.4C73.7 69.9 76.7 60.8 76.7 48.9C76.7 41.4 75.4 34.8 72.9 29.2C70.4 23.6 66.6 19.2 61.7 16.2C56.8 13.1 51.4 11.5 45.3 11.5C36.6 11.5 29.2 14.5 22.9 20.5C16.7 26.4 13.6 36.3 13.6 50.2Z" fill="white"/>
+    <path d="M103.7 121V28.1H114V36.8C116.4 33.4 119.2 30.8 122.3 29.2C125.3 27.4 129 26.6 133.4 26.6C139.1 26.6 144.2 28 148.5 31C152.9 33.9 156.2 38.1 158.4 43.5C160.6 48.8 161.7 54.6 161.7 61C161.7 67.9 160.5 74 158 79.5C155.6 85 152 89.2 147.3 92.1C142.7 95 137.7 96.5 132.6 96.5C128.8 96.5 125.4 95.7 122.4 94.1C119.4 92.5 116.9 90.5 115 88V121H103.7ZM113.9 61.9C113.9 70.5 115.7 76.9 119.2 81C122.7 85.1 126.9 87.2 131.8 87.2C136.9 87.2 141.2 85 144.7 80.8C148.4 76.5 150.2 69.9 150.2 61C150.2 52.4 148.4 46.1 144.9 41.8C141.4 37.6 137.2 35.5 132.3 35.5C127.5 35.5 123.2 37.7 119.5 42.3C115.8 46.8 113.9 53.3 113.9 61.9Z" fill="white"/>
+    <path d="M221.3 73.4L233 74.9C231.1 81.7 227.7 87 222.7 90.8C217.7 94.6 211.3 96.5 203.6 96.5C193.8 96.5 186 93.5 180.3 87.5C174.6 81.4 171.7 73 171.7 62.1C171.7 50.8 174.6 42.1 180.4 35.9C186.2 29.7 193.7 26.6 202.9 26.6C211.9 26.6 219.2 29.6 224.9 35.7C230.5 41.8 233.4 50.4 233.4 61.4C233.4 62.1 233.3 63.1 233.3 64.4H183.4C183.8 71.8 185.9 77.4 189.7 81.3C193.4 85.2 198 87.2 203.6 87.2C207.8 87.2 211.3 86.1 214.3 83.9C217.2 81.7 219.5 78.2 221.3 73.4ZM184 55.1H221.4C220.9 49.5 219.5 45.3 217.1 42.4C213.5 38.1 208.8 35.9 203.1 35.9C197.9 35.9 193.5 37.6 189.9 41.1C186.4 44.6 184.4 49.3 184 55.1Z" fill="white"/>
+    <path d="M247.3 95V28.1H257.5V37.6C262.4 30.2 269.5 26.6 278.8 26.6C282.8 26.6 286.5 27.3 289.9 28.8C293.3 30.2 295.8 32.1 297.5 34.4C299.2 36.8 300.3 39.6 301 42.8C301.4 44.9 301.6 48.6 301.6 53.8V95H290.3V54.3C290.3 49.7 289.9 46.2 289 44C288.1 41.6 286.5 39.8 284.3 38.5C282 37.1 279.4 36.4 276.4 36.4C271.6 36.4 267.4 37.9 263.9 41C260.4 44.1 258.6 49.9 258.6 58.4V95H247.3Z" fill="white"/>
+    <path d="M103.7 242.5V138H124.8V184.4L167.4 138H195.8L156.4 178.7L197.9 242.5H170.6L141.9 193.4L124.8 210.9V242.5H103.7Z" fill="white"/>
+    <path d="M209.1 242.5V138H229.6L272.4 207.8V138H292V242.5H270.8L228.7 174.3V242.5H209.1Z" fill="white"/>
+    <path d="M303.8 242.5L339.5 187.9L307.1 138H331.8L352.8 171.5L373.3 138H397.7L365.2 188.7L400.9 242.5H375.5L352.3 206.3L329.1 242.5H303.8Z" fill="white"/>
+    <line x1="0" y1="116" x2="97.8" y2="116" stroke="#449841" stroke-width="10"/>
+    <line x1="120.8" y1="116" x2="403" y2="116" stroke="#449841" stroke-width="10"/>
+    <line x1="352.8" y1="99" x2="352.8" y2="111" stroke="#449841" stroke-width="10"/>
+    <rect x="318.8" y="28" width="67" height="67" fill="#449841"/>
+    <line x1="45.8" y1="133" x2="45.8" y2="121" stroke="#449841" stroke-width="10"/>
+    <rect x="79.8" y="205" width="67" height="67" transform="rotate(-180 79.8 205)" fill="#449841"/>
+</svg></div>
+<div class="menu-container" id="tabs">
+    <a class="menu" href="#uebersicht">Überblick</a>
+    <a class="menu" href="#katalog">Katalog</a>
+    <a class="menu" href="#raster">Regeln</a>
+    <a class="menu" href="#schrift">Schrift</a>
+    <a class="menu" href="#bausteine">Bausteine</a>
+    <a class="menu" href="#icons">Icons</a>
+    <a class="menu" href="#graphen">Graphen</a>
+    <a class="menu" href="#menue">Menü</a>
+    <a class="menu" href="#toast">Toast</a>
+    <a class="menu" href="#ansichten">Einfach &amp; Experte</a>
+    <a class="menu" href="#ablaeufe">Abläufe</a>
+    <a class="menu" href="#module">Module</a>
+    <a class="menu" href="#pool">Widget-Pool</a>
+    <a class="menu" href="#ausblick">Ausblick</a>
+  </div>
+<div class="nav-status"><span class="nav-firm">Erkan Çolak</span></div>
+</nav>
+
+<main><div class="container">
+<h1>OpenKNX Display Design</h1>
+<div class="meta">OpenKNX &middot; <b>Erkan Çolak</b> &middot; Gestaltungshandbuch für alle Widgets auf 128×64 OLED (SSD1306 / SSD1315)</div>
+<div class="filter" role="group" aria-label="Darstellung"><div class="row">
+<span class="active-label">Panel</span><span class="grp" id="panelSeg"><button class="chip" data-p="white" aria-pressed="false">Weiß</button><button class="chip" data-p="blue" aria-pressed="false">Blau</button><button class="chip" data-p="web" aria-pressed="true">Grün</button></span>
+<span class="active-label">Ansicht</span><span class="grp" id="modeSeg"><button class="chip" data-m="simple" aria-pressed="true">Einfach</button><button class="chip" data-m="expert" aria-pressed="false">Experte</button></span>
+<span class="active-label">Pixel</span><span class="grp" id="gridSeg"><button class="chip" data-g="0" aria-pressed="true">Flächig</button><button class="chip" data-g="1" aria-pressed="false">Raster</button></span>
+</div></div>
+
+<!-- ======================= OVERVIEW ======================= -->
+<section class="view" data-view="uebersicht">
+  <div class="hero">
+    <div class="vhead">
+      <span class="eyebrow">Corporate Design · Display</span>
+      <h2>Ein Bild­schirm, ein Raster, eine Sprache</h2>
+      <p class="lead">Sieben Repos zeichnen auf dasselbe 128×64-Panel: DeviceDisplay, OGM-Common, Network, Notify, SD-Card, IP-Interface und IP-Router (Interface und Router nie im selben Build). Dieses Handbuch legt fest, wie Kopfzeile, Text, Menü, Icons und Graphen aussehen. Jede Anzeige hier ist echte Pixelgrafik und wird mit denselben Zeichenbefehlen erzeugt wie auf dem Gerät.</p>
+      <div class="facts">
+        <div class="fact"><b>128×64</b><span>Pixel, 1 Bit</span></div>
+        <div class="fact"><b>21</b><span>Zeichen pro Zeile</span></div>
+        <div class="fact"><b>24</b><span>Katalog-Einträge</span></div>
+        <div class="fact"><b>7</b><span>Repos zeichnen</span></div>
+      </div>
+    </div>
+    <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="hero"></canvas></div>
+      <figcaption><span class="chip ist">IST</span><b>Rotation der Standard-Widgets</b><span class="src">Beispieldaten</span></figcaption></figure>
+  </div>
+
+  <div class="block xp">
+    <div class="vhead"><span class="eyebrow">Wie diese Bilder entstehen</span><h2>Pixelgenau, aber nicht vom Gerät abfotografiert</h2>
+    <p>Die Seite rechnet die Adafruit-GFX-Routinen nach: <code>drawLine</code>, <code>drawCircle</code>, <code>fillRoundRect</code>, <code>fillTriangle</code>, <code>drawBitmap</code> und den 5×7-Zeichensatz <code>glcdfont.c</code>, alles mit denselben Algorithmen. Koordinaten, Texte und Formate stammen aus den Quelldateien in der Bildunterschrift. Die Messwerte sind Beispieldaten. Ein Abgleich mit Screenshots vom Gerät steht noch aus.</p></div>
+  </div>
+
+
+  <div class="block">
+    <div class="vhead"><h3>Neues Widget in fünf Schritten</h3></div>
+    <table class="attribute-table"><tbody>
+      <tr><td>1 · Muster wählen</td><td>Seite 1 ist eine Karte (Symbol, Plakette, Wort, eine Detailzeile), weitere Seiten sind Expert-Seiten. Ohne Auto paging zeigt die Rotation nur Seite 1. <a href="#ansichten">Einfach &amp; Experte</a></td></tr>
+      <tr><td>2 · Ähnliches Widget suchen</td><td>Im <a href="#katalog">Katalog</a> oder im <a href="#pool">Widget-Pool</a> ein Vorbild suchen, aufs Bild klicken und den Zeichencode kopieren.</td></tr>
+      <tr><td>3 · Gemeinsame Hilfen nutzen</td><td>Kopf, Seitenpunkte, Zeilen, Karte, Großwert, Balken und Graph über <code>OpenKNX::Ui</code> (<code>OFM-DeviceDisplay/src/DisplayUi.h</code>), Symbole aus <code>src/Icons/UiIcons.h</code>. Jede Zeichnung beginnt mit <code>Ui::begin</code>. <a href="#bausteine">Bausteine</a><br><button class="btn" data-code="tpl" data-title="Widget-Vorlage" style="margin-top:6px">Widget-Vorlage öffnen</button> Karte, Werte, Verlauf als fertige Klasse zum Kopieren.</td></tr>
+      <tr><td>4 · Regeln prüfen</td><td>Kopf L1, Zeilentakt L4, Texte T1–T7, Icons I1–I4, Graphen G1–G5. Die Nummern stehen bei jedem Katalog-Eintrag. <a href="#raster">Regeln</a> und <a href="#schrift">Schrift</a>.</td></tr>
+      <tr><td>5 · Speicher</td><td>Kein Heap im Zeichnen, Text in Stack-Puffern bis 24 Byte, feste Texte im Flash, keine eigenen Verlaufspuffer, wo das Modul schon eine Historie führt.</td></tr>
+    </tbody></table>
+  </div>
+</section>
+
+<!-- ======================= GRID ======================= -->
+<section class="view" data-view="raster" hidden>
+  <div class="vhead"><span class="eyebrow">Regeln</span><h2>Regeln: Raster, Kopfzeile, Seiten, Zeilen</h2>
+    <p>Ein Display, sechs Zonen. Die Zahlen sind Pixelkoordinaten auf dem Panel (x nach rechts, y nach unten, Ursprung oben links).</p></div>
+  <div class="cols">
+    <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="tpl"></canvas>
+      <svg class="ov" viewBox="0 0 128 64" preserveAspectRatio="none" aria-hidden="true">
+        <rect x="0" y="0" width="116" height="10" fill="rgba(53,224,138,.16)"/>
+        <rect x="116" y="0" width="12" height="9" fill="rgba(255,180,84,.30)"/>
+        <rect x="0" y="12" width="128" height="30" fill="rgba(86,211,255,.10)"/>
+        <rect x="0" y="44" width="128" height="20" fill="rgba(199,139,255,.16)"/>
+        <g stroke="rgba(116,255,176,.55)" stroke-width=".25" stroke-dasharray="1 1">
+          <line x1="0" y1="14" x2="128" y2="14"/><line x1="0" y1="24" x2="128" y2="24"/><line x1="0" y1="34" x2="128" y2="34"/><line x1="0" y1="44" x2="128" y2="44"/><line x1="0" y1="54" x2="128" y2="54"/>
+        </g>
+      </svg></div>
+      <figcaption><b>Schablone</b><span class="src">grün Kopf · orange Manager-Ecke · blau Inhalt · violett Graph-Zone · gestrichelt Textzeilen</span></figcaption></figure>
+    <div class="rules">
+      <div class="rule"><span class="id">L1</span><div><h4>Kopfzeile y0–9</h4><p>Titel bei x0 y0 in Größe 1, darunter bei y10 eine gepunktete Linie über die volle Breite (jedes zweite Pixel, die Punkte wechseln jede Minute die Seite gegen Einbrennen). Immer über <span class="mono">Ui::header(d, title, pages, page)</span>. Der Titel hat höchstens <span class="mono">(116 − 6·n − 2) / 6</span> Zeichen, bei 5 Seiten also 14; längere enden auf „...“. Keine Webadresse, kein Doppelpunkt, keine Großbuchstaben als Schmuck. Ausnahme: die QR-Seite des Setup-AP setzt „WiFi“ ab x68 in die rechte Spalte, darunter eine durchgezogene Linie ab x66, weil der QR links die volle Höhe von 64 px braucht.</p></div></div>
+      <div class="rule"><span class="id">L2</span><div><h4>Manager-Ecke x116–127, y0–8</h4><p>Ein 12×9-Feld, das dem WidgetsManager gehört, solange ein Rotations-Widget läuft. Es zeigt das Play-Dreieck (Widgets rotieren) oder die Pause-Balken (Rotation angehalten), auf einem angehefteten Widget ein Schloss. Im Busmonitor blinkt im Wechsel ein inverses „BM“. Widgets zeichnen dort nichts.</p></div></div>
+      <div class="rule"><span class="id">L3</span><div><h4>Seitenpunkte</h4><p>Ab zwei Seiten, rechtsbündig vor der Ecke: <span class="mono">x = 116 − 6·n + 6·i + 2</span>, y4. Aktive Seite als Scheibe r2, die anderen als Ring r1.</p></div></div>
+      <div class="rule"><span class="id">L4</span><div><h4>Zwei Takte</h4><p>Text im 10-px-Takt auf y14, 24, 34, 44, 54 (fünf Zeilen). Gleichartige Datenzeilen (IP-Listen, Konten) dürfen im 8-px-Takt stehen. Andere Abstände sind nicht erlaubt.</p></div></div>
+      <div class="rule"><span class="id">L5</span><div><h4>Graph-Zone y44–63</h4><p>Ein Verlauf belegt unten 20 px, damit oben drei Textzeilen bleiben. Ein Vollbild-Graph nutzt y12–63. Die Grundlinie liegt auf der letzten Pixelzeile des Graphen.</p></div></div>
+      <div class="rule"><span class="id">L6</span><div><h4>Vollbild-Zustände</h4><p>ProgMode, OTA und die Haltegeste verwenden dieselbe Kopfzeile wie alle anderen. Darunter ein Wort oder Wert in Größe 2 ab y14, ein Balken, wo es einen Fortschritt gibt (OTA, Geste), und Textzeilen im 10-px-Takt bis y54.</p></div></div>
+      <div class="rule"><span class="id">L7</span><div><h4>Ränder</h4><p>Text beginnt bei x0, Menüzeilen bei x2. Rechtsbündige Werte enden 2 px vor dem Rand. Rahmen sind 1 px breit. Unter y56 beginnt keine Textzeile, die letzte liegt auf y54–61.</p></div></div>
+    </div>
+  </div>
+  <div class="block">
+    <div class="vhead"><span class="eyebrow">Schablonen</span><h3>Drei Grundformen, aus denen jedes Widget besteht</h3></div>
+    <div class="grid">
+      <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="n-tpl-text"></canvas></div><figcaption><span class="chip neu">NEU</span><b>Textseite</b><span class="note">Kopf + fünf Zeilen im 10-px-Takt</span></figcaption></figure>
+      <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="n-tpl-graph"></canvas></div><figcaption><span class="chip neu">NEU</span><b>Wert + Verlauf</b><span class="note">Großwert, eine Zeile Kontext, Graph-Zone</span></figcaption></figure>
+      <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="n-tpl-state"></canvas></div><figcaption><span class="chip neu">NEU</span><b>Zustand</b><span class="note">Kopf, Plakette, Wort in Größe 2, Detailzeile</span></figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= TYPE ======================= -->
+<section class="view" data-view="schrift" hidden>
+  <div class="vhead"><span class="eyebrow">Typografie</span><h2>Ein Zeichensatz, drei Größen</h2>
+    <p>Alle Widgets nutzen den eingebauten Adafruit-Zeichensatz: 5×7 Pixel in einer 6×8-Zelle. <code>setTextSize</code> vervielfacht jede Zelle. Andere Fonts gibt es auf dem Display nicht.</p></div>
+  <div class="grid big">
+    <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="glyphs"></canvas></div><figcaption><b>Zeichensatz ASCII 32–126</b><span class="src">glcdfont.c · Größe 1</span></figcaption></figure>
+    <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="sizes"></canvas></div><figcaption><b>Größen</b><span class="note">1 = 6×8 (21 Zeichen) · 2 = 12×16 (10 Zeichen) · 3 = 18×24 (7 Zeichen, nur Uhr)</span></figcaption></figure>
+  </div>
+  <div class="cols">
+    <div class="rules">
+      <div class="rule"><span class="id">T1</span><div><h4>Englisch, kurz</h4><p>Alle Texte auf dem Display, im Menü und in den zugehörigen Logzeilen sind englisch. Jedes Zeichen zählt: „Ready“, „3 queued“, „12 min ago“.</p></div></div>
+      <div class="rule"><span class="id">T2</span><div><h4>Größe 2 nur für den einen Wert</h4><p>Höchstens ein Text in Größe 2 pro Seite: der Wert, wegen dem die Seite existiert. Größe 3 nur für die Uhrzeit.</p></div></div>
+      <div class="rule"><span class="id">T3</span><div><h4>Schreibweise</h4><p>Titel, Bezeichnungen und Aktionen mit großem Anfangsbuchstaben („Network“, „KNX Bus“, „Restart“). Großbuchstaben nur für Abkürzungen (KNX, IP, PA, OTA, BM).</p></div></div>
+      <div class="rule"><span class="id">T4</span><div><h4>Bezeichnung und Wert</h4><p>Die Bezeichnung steht links und ist auf eine feste Breite aufgefüllt, mindestens ein Leerzeichen trennt sie vom Wert. In einer Spalte haben alle Bezeichnungen dieselbe Breite.</p></div></div>
+      <div class="rule"><span class="id">T5</span><div><h4>Kürzen</h4><p>Gekürzt wird die Bezeichnung, nie der Wert. Abgeschnittenes endet auf „...“ (<code>Ui::printCut</code>).</p></div></div>
+      <div class="rule"><span class="id">T6</span><div><h4>Zahlen und Einheiten</h4><p>Zähler über <code>humanCount</code>, Bytes über <code>humanBytes</code>, Dauer als „12 min ago“ oder „3 h left“. Jedes Widget formatiert gleich.</p></div></div>
+      <div class="rule"><span class="id">T7</span><div><h4>Zustand selbst setzen</h4><p>Vor dem ersten Zeichnen setzt jedes Widget <code>setTextSize</code>, <code>setTextColor</code> und <code>setTextWrap(false)</code>. Es übernimmt nichts vom Widget davor.</p></div></div>
+    </div>
+    <div class="block">
+      <div class="tbl"><table style="min-width:0">
+        <thead><tr><th>Funktion</th><th>Eingabe</th><th>Anzeige</th></tr></thead>
+        <tbody id="fmtRows"></tbody></table></div>
+      <p class="dim" style="font-size:.85rem">Die Ausgaben berechnet diese Seite mit nachgebauten Funktionen aus <span class="mono">OGM-Common/src/OpenKNX/Helper.cpp</span>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= MENU ======================= -->
+<section class="view" data-view="menue" hidden>
+  <div class="vhead"><span class="eyebrow">Bedienung</span><h2>Menüführung mit fünf Tasten</h2>
+    <p>Die Tastenbelegung ist aus <span class="mono">DeviceDisplay.cpp</span> und <span class="mono">Menu.cpp</span> übernommen. Im Simulator unten lässt sich das echte Verhalten durchspielen: In Listen bleibt die Auswahl am Ende stehen, in der Auswahlliste läuft sie im Kreis, und ← bricht ab.</p></div>
+  <div class="keys">
+    <div class="key"><h4>Startbildschirm</h4><dl><dt>← →</dt><dd>vorheriges / nächstes Widget</dd><dt>↑ ↓</dt><dd>Seite im Widget</dd><dt>OK</dt><dd>Menü öffnen</dd></dl></div>
+    <div class="key"><h4>Halten (Geste)</h4><dl><dt>OK</dt><dd>ProgMode ein/aus</dd><dt>↑</dt><dd>Rotation anhalten / fortsetzen</dd><dt>↓</dt><dd>Neustart</dd><dt>←</dt><dd>Display aus</dd><dt>→</dt><dd>Screenshot</dd></dl><p class="dim" style="font-size:.8rem;margin-top:6px">Standardbelegung, änderbar unter Home keys. Loslassen bricht ab.</p></div>
+    <div class="key"><h4>Im Menü</h4><dl><dt>↑ ↓</dt><dd>Zeile wählen (bleibt am Ende stehen)</dd><dt>OK →</dt><dd>öffnen, Schalter umlegen</dd><dt>←</dt><dd>eine Ebene zurück, in der Wurzel schließen</dd><dt>Icons</dt><dd>alle Pfeile bewegen den Cursor, nur OK öffnet</dd><dt>← lang</dt><dd>schließt das Menü aus jeder Ebene</dd></dl></div>
+    <div class="key"><h4>Editoren</h4><dl><dt>Auswahl</dt><dd>↑↓ im Kreis, OK/→ übernehmen, ← abbrechen</dd><dt>Regler</dt><dd>←↓ weniger, →↑ mehr, wirkt sofort, OK zurück</dd><dt>Abfrage</dt><dd>← No, → Yes, ↑↓ wechseln, OK ausführen. Vorauswahl: No</dd></dl></div>
+  </div>
+  <div class="flow" aria-label="Ablauf"><span>Widget-Rotation</span><i>OK →</i><span>Menü-Wurzel</span><i>OK →</i><span>Untermenü</span><i>OK →</i><span>Editor</span><i>← zurück</i><span>Untermenü</span><i>←←</i><span>Rotation</span></div>
+
+  <div class="block">
+    <div class="vhead"><span class="eyebrow">Simulator</span><h3>Menü durchspielen</h3><p class="dim">Tasten anklicken oder Pfeiltasten und Enter benutzen, sobald der Simulator den Fokus hat. Der Zustand ist ein Modell aus dem Code (Wurzel, Display, Screensaver, Brightness, Reset).</p></div>
+    <div class="sim" id="sim" tabindex="0" aria-label="Menü-Simulator">
+      <figure class="scr"><div class="bez"><canvas width="512" height="256" id="simCv"></canvas></div><figcaption><span class="chip ist">IST</span><b id="simTitle">Menü</b><span class="src" id="simSrc">Menu.cpp · drawMenu</span></figcaption></figure>
+      <div style="display:grid;gap:10px">
+        <div class="pad"><button class="u" data-k="U" aria-label="Hoch">↑</button><button class="l" data-k="L" aria-label="Links">←</button><button class="o" data-k="O" aria-label="OK">OK</button><button class="r" data-k="R" aria-label="Rechts">→</button><button class="d" data-k="D" aria-label="Runter">↓</button></div>
+        <div class="log" id="simLog" aria-live="polite"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="block">
+    <div class="vhead"><span class="eyebrow">Bausteine</span><h3>Die Menü-Bildschirme</h3></div>
+    <div class="grid">
+      <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="radio"></canvas></div><figcaption><span class="chip ist">IST</span><b>Auswahlliste</b><span class="src">drawRadioSelect · 11 px</span></figcaption></figure>
+      <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="slider"></canvas></div><figcaption><span class="chip ist">IST</span><b>Regler</b><span class="src">drawSlider</span></figcaption></figure>
+      <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="confirm"></canvas></div><figcaption><span class="chip ist">IST</span><b>Abfrage</b><span class="src">drawConfirmDialog · No vorgewählt</span></figcaption></figure>
+      <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="n-list"></canvas></div><figcaption><span class="chip neu">NEU</span><b>Liste mit Titel und Bildlauf</b><span class="note">Titel = Menüname, Position „3/12“, Bildlaufleiste x126</span></figcaption></figure>
+      <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="m-carousel"></canvas></div><figcaption><span class="chip neu">NEU</span><b>Großes Icon-Menü: Karussell</b><span class="note">Symbol 30 px, Name und Info darunter, ← → blättern</span></figcaption></figure>
+      <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="m-list"></canvas></div><figcaption><span class="chip neu">NEU</span><b>Großes Icon-Menü: Liste</b><span class="note">Symbol 20 px mit Live-Info, ↑ ↓ blättern</span></figcaption></figure>
+      <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="n-gesture"></canvas></div><figcaption><span class="chip neu">NEU</span><b>Haltegeste nach L6</b><span class="note">Balken mit Innenabstand, Restzeit groß</span></figcaption></figure>
+    </div>
+  </div>
+  <div class="rules">
+    <div class="rule"><span class="id">M1</span><div><h4>Auswahl ist invers</h4><p>Die gewählte Zeile ist eine weiße Fläche mit schwarzer Schrift. Andere Markierungen (Rahmen, Pfeil, Stern) gibt es nicht.</p></div></div>
+    <div class="rule"><span class="id">M2</span><div><h4>Was die Zeile tut, steht rechts</h4><p>„&gt;“ öffnet ein Untermenü, „&lt; v &gt;“ blättert mit OK durch Werte, „v &gt;“ öffnet einen Editor, „&lt;“ geht zurück. Schalter sind Werte mit zwei Stufen: „On“ / „Off“, gewählt „&lt; On &gt;“.</p></div></div>
+    <div class="rule"><span class="id">M3</span><div><h4>Ort und Menge zeigen</h4><p>Listen zeigen den Menünamen als Titel und die Position „n/m“ in der Kopfzeile. Mehr als fünf Zeilen bekommen eine Bildlaufleiste bei x126–127.</p></div></div>
+    <div class="rule"><span class="id">M4</span><div><h4>Zerstörendes fragt nach</h4><p>Reset, Werkseinstellung und Neustart gehen über die Abfrage. Vorgewählt ist immer „No“.</p></div></div>
+  </div>
+</section>
+
+<!-- ======================= ICONS ======================= -->
+<section class="view" data-view="icons" hidden>
+  <div class="vhead"><span class="eyebrow">Icon-Pool</span><h2>Drei Größen, ein Strich</h2>
+    <p>Ein Klick auf ein Icon zeigt es auf dem Panel und erzeugt das <code>PROGMEM</code>-Feld für <code>drawBitmap</code>.</p></div>
+  <div class="rules">
+    <div class="rule"><span class="id">I1</span><div><h4>9×9 Zeilensymbol</h4><p>Steht vor einer Textzeile bei x0, y = Zeile − 1. Der Text beginnt bei x12. Strich 1 px, Füllung nur für Fehler und Warnung.</p></div></div>
+    <div class="rule"><span class="id">I2</span><div><h4>32×32 Menübild</h4><p>Das Icon-Karussell zeichnet jeden Hauptmenüeintrag als 32×32-Bild bei x48 y13, die Nachbarn halb so groß links und rechts. Das Bild kommt aus <code>src/Icons/UiIcons.h</code>, gesucht nach dem Namen des Eintrags (<code>OpenKNX::Ui::menuIcon32</code>); ein neues Modul trägt sein Bild dort ein, sonst bleibt die Stelle leer. <code>MenuOption::icon</code> wird nicht gezeichnet.</p></div></div>
+    <div class="rule"><span class="id">I3</span><div><h4>17er Plakette</h4><p>Gefüllter Kreis r8, darin ein 13×13-Symbol in Schwarz (Notify-Muster). Sie zeigt den Zustand eines ganzen Widgets. Ein Ring r10 in Schwarz trennt sie von der Zeichnung darunter.</p></div></div>
+    <div class="rule"><span class="id">I4</span><div><h4>Bedeutung bleibt gleich</h4><p>Haken heißt erfolgreich, Ausrufezeichen heißt Fehler, Uhr heißt wartet, Schloss heißt gesperrt. Ein Symbol hat in allen Modulen dieselbe Bedeutung.</p></div></div>
+  </div>
+  <div class="cols">
+    <figure class="scr"><div class="bez"><canvas width="512" height="256" id="icPrev"></canvas></div><figcaption><b id="icName">Icon</b><span class="src" id="icSrc"></span></figcaption></figure>
+    <div class="block xp"><div class="code" id="icCode"></div><div><button class="btn" id="icCopy">Kopieren</button> <span class="dim" id="icCopied" style="font-size:.8rem"></span></div></div>
+  </div>
+  <div class="block"><div class="vhead"><h3>Status &amp; Info: eine Bedeutung in drei Größen</h3>
+    <p class="dim">Dieselbe Aussage hat in Zeile, Kachel und Plakette dieselbe Form. Die Spalte „Auf dem Panel“ zeigt das Zeilensymbol vor einer Textzeile, wie in der Kontenliste von Notify.</p></div>
+    <div class="tbl"><table style="min-width:600px"><thead><tr><th>Bedeutung</th><th>9×9 Zeile</th><th>13×13 Kachel</th><th>Plakette</th><th>Auf dem Panel</th></tr></thead><tbody id="infoRows"></tbody></table></div></div>
+  <div class="block"><div class="vhead"><h3>Große Menüsymbole</h3><p class="dim">Symbole für das Karussell, aus Linien und Kreisen, in jeder Größe, hier mit 20 px und 30 px.</p></div>
+    <div class="grid"><figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="big-20"></canvas></div><figcaption><span class="chip neu">NEU</span><b>alle Einträge, 20 px</b></figcaption></figure><figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="m-carousel-s"></canvas></div><figcaption><span class="chip neu">NEU</span><b>30 px im Karussell</b></figcaption></figure><figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="m-list-s"></canvas></div><figcaption><span class="chip neu">NEU</span><b>20 px mit Info</b></figcaption></figure></div></div>
+  <div class="block"><div class="vhead"><h3>9×9 Zeilensymbole</h3></div><div class="icons" id="ic9"></div></div>
+  <div class="block"><div class="vhead"><h3>13×13 Menükacheln</h3></div><div class="icons" id="ic13"></div></div>
+  <div class="block"><div class="vhead"><h3>Plaketten und Glyphen</h3></div><div class="icons" id="icB"></div></div>
+</section>
+
+<!-- ======================= GRAPHS ======================= -->
+<section class="view" data-view="graphen" hidden>
+  <div class="vhead"><span class="eyebrow">Graph-Pool</span><h2>Verläufe auf einem Bit</h2>
+    <p>Auf dem Panel gibt es nur an oder aus. Grau entsteht durch ein Muster (Schachbrett 50 %, Bayer 25 %). Jeder Graph unten läuft mit Beispieldaten. Die bestehenden stammen aus dem Code, die neuen sind Vorschläge für Notify, Bus, Speicher und Netz.</p></div>
+  <div class="rules">
+    <div class="rule"><span class="id">G1</span><div><h4>Neu ist rechts</h4><p>Die Zeit läuft nach rechts, der jüngste Wert steht am rechten Rand. Ein Pixel ist ein Messwert. Der Zeitraum steht rechts oben über dem Graphen („100 s“, „24 h“).</p></div></div>
+    <div class="rule"><span class="id">G2</span><div><h4>Skala</h4><p>Prozent und feste Grenzen haben eine feste Skala. Alles andere skaliert auf das laufende Maximum, und der Spitzenwert steht links oben auf einer schwarzen Fläche (NetSpeed-Muster).</p></div></div>
+    <div class="rule"><span class="id">G3</span><div><h4>Linien</h4><p>Die Grundlinie ist durchgezogen, das Hilfsraster punktiert im 3-px-Abstand, eine Grenze gestrichelt 2 an, 2 aus. Höchstens zwei Reihen, unterschieden durch Richtung (Spiegel) oder Muster.</p></div></div>
+    <div class="rule"><span class="id">G4</span><div><h4>Leer und Fehler</h4><p>Vor dem ersten Messwert steht „-“ statt einer Null. Fehlt der Messwert (z. B. kein Zähler im Build), steht „n/a“ und kein leerer Graph.</p></div></div>
+    <div class="rule"><span class="id">G5</span><div><h4>Balken mit Innenabstand</h4><p>Fortschritt und Pegel: Rahmen 1 px, 10 px hoch, Füllung 2 px innen. So unterscheiden sich 0 %, 100 % und „kein Wert“.</p></div></div>
+  </div>
+  <div class="grid" id="graphGrid"></div>
+</section>
+
+<!-- ======================= POOL ======================= -->
+<section class="view" data-view="pool" hidden>
+  <div class="vhead"><span class="eyebrow">Widget-Pool</span><h2>Alles, was das Display zeigen kann</h2>
+    <p>Bestand und Erweiterung auf einen Blick, nach Modulen geordnet. Die neuen Widgets nutzen nur Bausteine aus diesem Handbuch: Raster L1–L7, Schrift T1–T7, Icons I1–I4, Graphen G1–G5.</p></div>
+  <div class="filters" id="poolF"><button class="chipf" data-f="all" aria-pressed="true">Alle</button><button class="chipf" data-f="neu" aria-pressed="false">Erweiterung</button></div>
+  <div id="pool" class="view" style="gap:28px"></div>
+</section>
+
+<!-- ======================= VIEWS (Simple / Expert) ======================= -->
+<section class="view" data-view="ansichten" hidden>
+  <div class="vhead"><span class="eyebrow">Einfach und Experte</span><h2>Erst der Zustand, dann die Zahlen</h2>
+    <p>Notify macht es vor: ein Symbol, eine Plakette, ein Wort, eine Zeile. So sieht jedes Modul im einfachen Modus aus. Zähler, Listen und Graphen kommen als Expert-Seiten dahinter.</p></div>
+  <div class="rules keep">
+    <div class="rule"><span class="id">V1</span><div><h4>Einfach ist Standard</h4><p>Eine Karte pro Modul im Notify-Muster: Symbol oben mittig, Plakette unten rechts am Symbol, Zustandswort groß, eine Detailzeile.</p></div></div>
+    <div class="rule"><span class="id">V2</span><div><h4>Das Wort sagt, ob etwas zu tun ist</h4><p>„Ready“, „Online“, „Bus OK“ oder „No LAN“, „Bus lost“. Die Zahl steht klein darunter.</p></div></div>
+    <div class="rule"><span class="id">V3</span><div><h4>Experte ergänzt</h4><p>Expert-Seiten folgen als weitere Seiten desselben Widgets. Zeilen mit einem Zustand (gut, Warnung, Fehler) bekommen ein Symbol, reine Werte stehen als Bezeichnung und Wert. Mit Auto paging aus blättert man sie mit ↑ ↓.</p></div></div>
+    <div class="rule"><span class="id">V4</span><div><h4>Umschalten</h4><p><span class="mono">Display → Auto paging</span>: aus (Standard) zeigt die Rotation nur Seite 1 jedes Widgets, die Unterseiten blättert man mit ↑ ↓ und bekommt dafür die volle Anzeigezeit. An: die Unterseiten laufen in der Rotation mit.</p></div></div>
+  </div>
+  <div id="viewRows" class="view" style="gap:26px"></div>
+</section>
+
+<!-- ======================= COMPONENTS ======================= -->
+<section class="view" data-view="bausteine" hidden>
+  <div class="vhead"><span class="eyebrow">Bausteine</span><h2>Zwölf Teile für jedes Widget</h2>
+    <p>Neue Widgets entstehen aus diesen Teilen. Ein Klick auf ein Bild zeigt den Aufruf über <code>OpenKNX::Ui</code>. <button class="btn" data-code="tpl" data-title="Widget-Vorlage">Widget-Vorlage öffnen</button></p></div>
+  <div class="grid" id="compGrid"></div>
+  <div class="block">
+    <div class="vhead"><h3>Schalter: Text statt Bild</h3><p class="dim">„On“ / „Off“ rechtsbündig, die gewählte Zeile zeigt „&lt; On &gt;“.</p></div>
+    <div class="grid">
+      <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="tog-C"></canvas></div><figcaption><b>Schalter in Listen</b><span class="note">„On“ / „Off“, gewählt „&lt; On &gt;“</span></figcaption></figure>
+    </div>
+  </div>
+  <div class="block xp">
+    <div class="vhead"><h3>Feste Werte</h3><p class="dim">Konstanten aus <code>OpenKNX::Ui</code>; im Widget immer den Namen nehmen, nie die Zahl.</p></div>
+    <div class="tbl"><table style="min-width:560px"><thead><tr><th>Name</th><th>Wert</th><th>Bedeutung</th><th>Datei</th></tr></thead><tbody id="tokRows"></tbody></table></div>
+  </div>
+  <div class="block xp">
+    <div class="vhead"><h3>Gemeinsame Hilfen: OpenKNX::Ui</h3><p class="dim">Kopfzeile, Seitenpunkte, Zeilen, Karte, Großwert, Balken, Graph und Text-Hilfen stehen einmal in <code>OFM-DeviceDisplay/src/DisplayUi.h</code>, die Symbole in <code>src/Icons/UiIcons.h</code>. Jedes Widget ruft zuerst <code>Ui::begin</code>.</p></div>
+    <div class="code" id="apiCode"></div>
+  </div>
+</section>
+
+<!-- ======================= TOAST ======================= -->
+<section class="view" data-view="toast" hidden>
+  <div class="vhead"><span class="eyebrow">Toast</span><h2>Kurze Meldungen, ohne die Arbeit zu stören</h2>
+    <p>Ein Ereignis aus irgendeinem Modul erscheint kurz auf dem Display. Was in welcher Lage geschieht, steht in der Tabelle unten.</p></div>
+  <div class="grid">
+    <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="t-bottom"></canvas></div><figcaption><span class="chip neu">NEU</span><b>Toast unten</b><span class="note">Info und Erfolg 2,5 s, Warnung 5 s</span></figcaption></figure>
+    <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="t-banner"></canvas></div><figcaption><span class="chip neu">NEU</span><b>Banner oben</b><span class="note">im Menü: ersetzt kurz die Titelzeile</span></figcaption></figure>
+    <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="t-card"></canvas></div><figcaption><span class="chip neu">NEU</span><b>Karte</b><span class="note">Fehler: bleibt bis OK oder ←</span></figcaption></figure>
+    <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="t-warn"></canvas></div><figcaption><span class="chip neu">NEU</span><b>Warnung</b><span class="note">5 s, weckt ein gedimmtes Display, Schoner oder Sleep</span></figcaption></figure>
+    <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="t-merge"></canvas></div><figcaption><span class="chip neu">NEU</span><b>Zusammengefasst</b><span class="note">dieselbe erste Zeile mehrfach in 10 s: „x3“</span></figcaption></figure>
+  </div>
+
+  <div class="block">
+    <div class="vhead"><h3>Ausprobieren</h3><p class="dim">Lage und Meldung wählen. Die Vorschau zeigt, welche Form der Code in dieser Lage wählt. Eine zu lange Zeile kürzt sie; das Gerät teilt sie in zwei Zeilen und zeigt sie nacheinander. Die Karte bleibt am Gerät bis OK oder ←, in der Vorschau bis „Noch einmal“.</p></div>
+    <div class="sim" style="grid-template-columns:minmax(0,1fr) minmax(0,320px)">
+      <figure class="scr" style="max-width:560px"><div class="bez"><canvas width="512" height="256" id="tpCv"></canvas></div><figcaption><b id="tpTitle">Toast</b><span class="note" id="tpLog"></span></figcaption></figure>
+      <div style="display:grid;gap:10px;align-content:start">
+        <div class="filters" id="tpCtx"></div>
+        <div class="filters" id="tpEv"></div>
+        <button class="btn" id="tpGo" style="justify-self:start">Noch einmal</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="block">
+    <div class="vhead"><h3>Wo ein Toast erscheint</h3><p class="dim">Zeilen: Stufe der Meldung. Spalten: was das Display gerade zeigt. So entscheidet <code>act()</code> in <code>src/Toast.cpp</code>; „Editor“ umfasst auch About, Geste, Status-Widgets und das Startlogo, „Schoner“ auch Sleep und ein nach Zeit ausgegangenes Panel, „aus“ nur das per Geste ausgeschaltete.</p></div>
+    <div class="tbl"><table style="min-width:760px"><thead id="mxHead"></thead><tbody id="mxBody"></tbody></table></div>
+    <div class="flow" id="mxLegend"></div>
+  </div>
+
+  <div class="cols">
+    <div class="block">
+      <div class="vhead"><h3>Gebaute Meldungen</h3></div>
+      <div class="rules keep" style="border-top:0">
+        <div class="rule"><span class="id">1</span><div><h4>Screenshot saved</h4><p>Beim Halten von → steht „Capture“ / „Screen“ auf dem Display. Danach „Screenshot saved“ mit dem Dateinamen, ohne Karte „No SD card“.</p></div></div>
+        <div class="rule"><span class="id">2</span><div><h4>Display reset, Panel saved</h4><p>Rückmeldung im Menü, als Banner.</p></div></div>
+        <div class="rule"><span class="id">3</span><div><h4>LAN down / LAN up, WiFi lost / WiFi up</h4><p>Ausfall als Karte, die Rückkehr mit der Adresse zieht sie zurück. Ein Ausfall, den das Gerät selbst auslöst, zeigt bis zu seiner Grenze nichts.</p></div></div>
+        <div class="rule"><span class="id">4</span><div><h4>Bus lost / Bus connected</h4><p>Aus BCU-Zustand und <code>busOperational()</code>. Verlust als Karte, „Bus connected“ zieht sie zurück.</p></div></div>
+        <div class="rule"><span class="id">5</span><div><h4>Tunnel und Busmonitor</h4><p>„Tunnel open“ mit PA und IP, die IP allein, wenn beides nicht passt; „Tunnel closed“ mit der PA. Am IP-Interface dazu „Busmonitor on“ / „off“.</p></div></div>
+        <div class="rule"><span class="id">6</span><div><h4>SD card in / removed</h4><p>Info mit freiem Platz, Entnahme als Warnung.</p></div></div>
+      </div>
+    </div>
+    <div class="rules">
+      <div class="rule"><span class="id">N1</span><div><h4>Eine Meldung zur Zeit</h4><p>Höchstens ein Toast sichtbar, bis zu 3 warten, Fehler stehen vorn.</p></div></div>
+      <div class="rule"><span class="id">N2</span><div><h4>Gleiches fassen</h4><p>Dieselbe erste Zeile innerhalb von 10 s erhöht nur „x3“. Ist die Ursache weg, zieht der Absender die Meldung mit <code>retractToast()</code> zurück; kommt sie innerhalb von 60 s wieder, zählt sie weiter und weckt nicht erneut.</p></div></div>
+      <div class="rule"><span class="id">N3</span><div><h4>Tasten</h4><p>Toast und Banner nehmen keine Taste weg. Die Karte nimmt OK und ←, auch gehalten, solange keine Haltegeste anläuft: OK ab 1 s, ← auf der Startseite ab 1 s, wenn ← eine Geste belegt hat (Standard: Display off). Dann bleibt die Karte; Loslassen im Balken bricht die Geste ab. Gibt der Absender ein Ziel mit, führt OK es aus (heute gibt keiner eins).</p></div></div>
+      <div class="rule"><span class="id">N4</span><div><h4>Verwerfen statt stauen</h4><p>Was die Lage nicht zeigt, wird verworfen (siehe Tabelle). Bei voller Schlange fällt eine neue Meldung weg; ein Fehler nimmt den Platz der letzten wartenden, außer alle wartenden sind frische Fehler.</p></div></div>
+      <div class="rule"><span class="id">N5</span><div><h4>Wenig I2C</h4><p>Der Toast ändert nur die unteren drei Pages, das Banner die oberen zwei. Ohne I2C-Scheduler schiebt <code>i2cDisplay</code> pro <code>loop()</code> höchstens eine geänderte Page.</p></div></div>
+    </div>
+  </div>
+  <div class="block xp">
+    <div class="vhead"><h3>Ereigniskatalog</h3><p class="dim">Eine Auswahl der Meldungen, die der Code heute sendet; alle stehen in <code>doc/design/toast.md</code>.</p></div>
+    <div class="tbl"><table style="min-width:640px"><thead><tr><th>Ereignis</th><th>Art</th><th>Text</th><th>Quelle</th><th>Zurückgezogen durch</th></tr></thead><tbody id="evRows"></tbody></table></div>
+  </div>
+</section>
+
+<!-- ======================= OUTLOOK ======================= -->
+<section class="view" data-view="ausblick" hidden>
+  <div class="vhead"><span class="eyebrow">Ausblick</span><h2>Was das Display noch können kann</h2>
+    <p>Vorgaben für später. Jede Idee nutzt nur Bausteine aus diesem Handbuch und nennt in der Expert-Ansicht, was sie kostet.</p></div>
+  <div class="grid big" id="outGrid"></div>
+  <div class="block">
+    <div class="vhead"><h3>Einbrennschutz: gepunktete Kopflinie und ein Hinweis</h3>
+      <p>Ein OLED-Pixel altert nur, solange es leuchtet. Gefährdet ist, was immer gleich bleibt, vor allem die Kopflinie bei y10, die jedes Widget hat. Die Linie wird gepunktet gezeichnet und die Punkte wechseln jede Minute die Seite (halbe Abnutzung, kein Schutz auf Dauer). Wer Dimmen, Bildschirmschoner oder Aus abschaltet, bekommt den Toast „Screen may burn in“. Der eigentliche Schutz bleibt die vorhandene Kette aus Dimmen, Bildschirmschoner und Aus.</p>
+      
+      </div>
+</section>
+
+
+<!-- ======================= MODULES ======================= -->
+<section class="view" data-view="module" hidden>
+  <div class="vhead"><span class="eyebrow">Fachmodule</span><h2>Sensoren, Zähler, Präsenz und mehr</h2>
+    <p>Muster für Fachmodule. Sie zeigen nur Werte, die die Module führen: Sensortypen, Zählarten, Kanalzahlen und Fehler aus dem Code und der ETS-Applikation der Module. Die Zahlen auf den Bildern sind Beispiele.</p></div>
+  <div class="rules keep">
+    <div class="rule"><span class="id">D1</span><div><h4>Grad als Ring</h4><p>Das Gradzeichen wird als Kreis r1 gezeichnet, nicht aus dem Zeichensatz geholt. Welches Zeichen dort steht, hängt von <code>cp437()</code> ab. Das ist gemeinsamer Zustand: About und Doom schalten es ein und nicht wieder aus.</p></div></div>
+    <div class="rule"><span class="id">D2</span><div><h4>Viele Kanäle als Raster, wenige als Zeilen</h4><p>Ab etwa 8 Kanälen ein Kästchen pro Kanal (gefüllt = aktiv, Rahmen = ruhig, Buchstabe = Sonderzustand). Bis 5 Kanäle je eine Zeile mit Symbol und Wert.</p></div></div>
+    <div class="rule"><span class="id">D3</span><div><h4>Grenzen kommen aus dem Modul</h4><p>Die Luftgüte-Stufen sind die des Sensormoduls (CO2 401 / 701 / 1001 / 1401 / 2001 ppm), keine eigenen. Das Display zeigt die Bewertung, es bewertet nicht selbst.</p></div></div>
+  </div>
+  <div id="modRows" class="view" style="gap:26px"></div>
+</section>
+
+<!-- ======================= STORIES ======================= -->
+<section class="view" data-view="ablaeufe" hidden>
+  <div class="vhead"><span class="eyebrow">Abläufe</span><h2>Was man Schritt für Schritt sieht</h2>
+    <p>Jede Story zeigt einen Ablauf von links nach rechts, so wie er auf dem Display erscheint.</p></div>
+  <div class="find">
+    <div><h3>WiFi Setup-QR</h3>
+      <p>Solange der Setup-AP läuft, bleibt der QR stehen. Der Toast meldet den Start und weckt das Display.</p></div>
+    <div class="pair">
+      <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="w-qr-neu"></canvas></div><figcaption><span class="chip neu">NEU</span></figcaption></figure></div>
+  </div>
+  <div class="rules keep">
+    <div class="rule"><span class="id">Q1</span><div><h4>Anheften</h4><p>Solange der Setup-AP läuft und kein Handy verbunden ist, bleibt der QR stehen (angeheftet im WidgetsManager, Schloss in der Ecke). ← → wechseln trotzdem, nach 30 s ohne Taste kommt der QR zurück.</p></div></div>
+    <div class="rule"><span class="id">Q2</span><div><h4>Toast und Wecken</h4><p>„WiFi setup on“ kommt als Warnung, wenn der AP über die Prog-Taste oder die Konsole startet oder später von selbst, nachdem die Startprüfung ohne AP endete; der AP beim Booten meldet sich nicht. Die Warnung weckt ein gedimmtes Display, Schoner oder Sleep und erscheint im Menü als Banner.</p></div></div>
+    <div class="rule"><span class="id">Q3</span><div><h4>Restzeit zeigen</h4><p>Ring und Restzeit („4:59“) nur, wenn der AP eine Frist hat: 5 min beim Rückfall, 10 min aus ProgMode oder Konsole. Ohne gespeicherte WiFi-Daten schließt der AP nie, dann ohne Ring.</p></div></div>
+    <div class="rule"><span class="id">Q4</span><div><h4>Handy da: Seite 2</h4><p>Sobald ein Handy verbunden ist und das Display an ist, wechselt das Widget einmal selbst auf die Adresse <span class="mono">10.42.0.1/wifi</span> und gibt die Rotation frei. Geht das letzte Handy, wird der QR wieder angeheftet.</p></div></div>
+  </div>
+  <div class="find">
+    <div><h3>Texteingabe am Gerät</h3>
+      <p>Das Zeichenrad für Texteinträge im Menü, heute für den Namen der SD-Karte. Das Bild zeigt den Aufbau; Netz und Passwort am Gerät sind nicht gebaut (W1).</p></div>
+    <div class="pair">
+      <figure class="scr"><div class="bez"><canvas width="512" height="256" data-s="wf-ted-neu"></canvas></div><figcaption><span class="chip neu">NEU</span><span class="src">Zeichenrad optimiert</span></figcaption></figure></div>
+  </div>
+  <div class="rules keep">
+    <div class="rule"><span class="id">W1</span><div><h4>Handy zuerst</h4><p>Netz und Passwort gibt man über den Setup-QR am Handy ein. Am Gerät ist das nicht gebaut: dafür fehlen die Netzliste, 63 Zeichen (der Editor hat höchstens 15) und eine Maske für das Passwort.</p></div></div>
+    <div class="rule"><span class="id">W2</span><div><h4>Zeichenrad</h4><p>Der Text steht in Größe 2 (zehn Zellen sichtbar), darunter die Nachbarzeichen und die vier Gruppen abc, ABC, 123, #+=. ↑ ↓ wechseln das Zeichen; ↑ halten springt beim Loslassen zur nächsten Gruppe, ↓ halten zur vorigen. Ein Eintrag begrenzt Länge (<code>ip[0]</code>, höchstens 15) und Zeichen (<code>dropdownOptions[0]</code>), heute für den Namen der SD-Karte.</p></div></div>
+    <div class="rule"><span class="id">W3</span><div><h4>Kein langes OK</h4><p>OK halten schaltet ProgMode. OK kurz übernimmt, ← an der ersten Stelle bricht ab, → hinter dem Ende hängt eine Stelle an.</p></div></div>
+    <div class="rule"><span class="id">W4</span><div><h4>Länge zeigen</h4><p>Rechts oben steht, wie viele Zeichen OK speichern würde, und das Maximum („6/11“); Leerzeichen am Ende zählen nicht.</p></div></div>
+  </div>
+  <div id="stories" class="view" style="gap:30px"></div>
+</section>
+
+
+
+
+
+<!-- ======================= CATALOG ======================= -->
+<section class="view" data-view="katalog" hidden>
+  <div class="vhead"><span class="eyebrow">Katalog</span><h2>Jedes Widget: was es zeigt und wie es gebaut wird</h2>
+    <p>Die Richtlinie für jedes Widget. Je Eintrag: das Bild, was es zeigt, wie es gebaut ist (Koordinaten, Zustände, Tasten) und die geltenden Regeln. Ein Klick auf das Bild zeigt den Zeichencode zum Kopieren. Filtern nach Repo oder suchen.</p></div>
+  <div class="filters" id="catF"></div>
+  <input id="catQ" type="search" placeholder="Suchen, z. B. Tunnel, y14, OFM-Network" aria-label="Katalog durchsuchen" style="max-width:420px;padding:8px 10px;border-radius:6px;border:1px solid var(--line2);background:var(--panel);color:var(--txt);font:inherit">
+  <div id="catList" style="display:grid;gap:14px"></div>
+</section>
+
+
+
+</div></main>
+<dialog class="codeDlg" id="codeDlg" aria-label="Zeichencode">
+<div class="bar"><b id="codeTitle">Code</b><span id="codeOk" class="gray" style="font-size:.8em"></span><button class="btn" id="codeCopy">Kopieren</button><button class="btn" id="codeClose" aria-label="Schließen">✕</button></div>
+<div class="grp" id="codeTabs" style="padding:8px 14px;border-bottom:1px solid #eee" hidden></div>
+<pre class="code" id="codeText"></pre>
+<div class="hint">Kompiliert gegen OFM-DeviceDisplay/src/DisplayUi.h. Katalog-Einträge zeigen die Funktion so, wie sie im Repo steht.</div>
+</dialog>
+<footer><div class="col"><b>OpenKNX Display Design</b><br>© 2026 by Erkan Çolak</div><div class="col">Pixel aus Adafruit-GFX-Algorithmen und glcdfont.c nachgerechnet</div></footer>
+
+<script src="code/handbook.js"></script>
+</body>
+</html>
