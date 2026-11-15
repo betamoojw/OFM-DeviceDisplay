@@ -155,6 +155,11 @@ class DeviceDisplay : public OpenKNX::Module
     // The screensaver instance owned by DeviceDisplay (the WidgetsManager only borrows it),
     // so we delete the old one ourselves when switching the screensaver type.
     Widget* _screenSaverOwned = nullptr;
+    #ifdef DEVICE_DISPLAY_BOOT_ANIM
+    // BootLogoAnim requested by the product (useBootLogoAnim), handed to the boot widget in initializeWidgets()
+    bool _bootAnim = false, _bootAnimVersion = true, _bootAnimDate = true;
+    const char* _bootAnimAuthor = nullptr;
+    #endif
     // screensaver family installed by setScreenSaverType() (0xFF = none); makes a repeated apply a no-op.
     uint8_t _screenSaverTypeInstalled = 0xFF;
 
@@ -337,6 +342,22 @@ class DeviceDisplay : public OpenKNX::Module
     // Select the active screensaver from the full family. Off -> nullptr (manager goes
     // straight to SLEEP). The previous widget is freed before the new one is installed.
     void setScreenSaverType(ScreenSaverType type);
+
+    #ifdef DEVICE_DISPLAY_BOOT_ANIM
+    /**
+     * @brief Boot screen BootLogoAnim instead of the static logo; call before openknx.setup(). Needs DEVICE_DISPLAY_BOOT_ANIM.
+     * @param author "by <author>" line (UTF-8, at most 18 chars shown), nullptr = none; read during openknx.setup()
+     * @param version firmware version and the "(Dev)" of the product name in the info line
+     * @param buildDate build date in the info line
+     */
+    void useBootLogoAnim(const char* author = nullptr, bool version = true, bool buildDate = true)
+    {
+        _bootAnim = true;
+        _bootAnimAuthor = author;
+        _bootAnimVersion = version;
+        _bootAnimDate = buildDate;
+    }
+    #endif
 
     // Presence-guarded registration helpers, no-ops when the manager/registry is absent.
     // tryAddWidget takes ownership of `widget` (deleted on the no-op path to avoid a leak).

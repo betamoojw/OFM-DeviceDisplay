@@ -746,8 +746,12 @@ void DeviceDisplay::wireMenuCallbacks()
  **********************************************************************/
 void DeviceDisplay::initializeWidgets()
 {
-    // Boot logo (first widget, auto-remove after 3s)
-    _widgetManager->addWidget(new WidgetBootLogo(3000, WidgetFlags::AutoRemove));
+    // Boot logo (first widget, auto-remove after 3 s; BootLogoAnim, when the product asks for it, sets its own time)
+    WidgetBootLogo* bootLogo = new WidgetBootLogo(3000, WidgetFlags::AutoRemove);
+    #ifdef DEVICE_DISPLAY_BOOT_ANIM
+    if (_bootAnim) bootLogo->useAnim(_bootAnimAuthor, _bootAnimVersion, _bootAnimDate);
+    #endif
+    _widgetManager->addWidget(bootLogo);
 
     // Screensaver (default Matrix classic). Tracked in _screenSaverOwned so setScreenSaverType()
     // can free it (the WidgetsManager only borrows the pointer).

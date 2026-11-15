@@ -71,6 +71,13 @@ class i2cDisplay
     void SetDisplayClockDiv(uint8_t clockdiv);   // Set the display clock division
     void SetDisplayPreCharge(uint8_t precharge); // Set the display precharge
     void displayBuff();                          // compares the buffer with the panel state and sends only the changed areas
+    /** @brief A part of the last frame has not been handed to the panel yet (sent directly or queued). */
+    bool flushPending() const
+    {
+        for (bool dirty : _pageDirty)
+            if (dirty) return true;
+        return false;
+    }
     /** @brief Drawn by displayBuff() into the frame for the panel; the GFX buffer and text state stay as the widget left them. */
     using Overlay = void (*)(Adafruit_SSD1306 &d);
     /** @brief What the overlay would draw now: 0 = nothing, any other value changes whenever its pixels change.

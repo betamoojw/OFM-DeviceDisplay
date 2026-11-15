@@ -67,6 +67,9 @@ void WidgetBootLogo::start()
 
     // logDebugP("Starting...");
     _state = WidgetState::RUNNING;
+    #ifdef DEVICE_DISPLAY_BOOT_ANIM
+    if (_anim) _anim->redraw(); // back after a priority widget: the panel shows its frame
+    #endif
 }
 
 void WidgetBootLogo::stop()
@@ -105,6 +108,9 @@ void WidgetBootLogo::resume()
 
     // logDebugP("Resuming...");
     _state = WidgetState::RUNNING;
+    #ifdef DEVICE_DISPLAY_BOOT_ANIM
+    if (_anim) _anim->redraw();
+    #endif
 }
 
 void WidgetBootLogo::setup()
@@ -136,6 +142,24 @@ void WidgetBootLogo::setup()
         logErrorP("Logo Bitmap is invalid.");
         return;
     }
+
+    #ifdef DEVICE_DISPLAY_BOOT_ANIM
+    // BootLogoAnim draws whole frames on a 128x64 panel and needs none of the steps below.
+    if (_anim) return;
+    if (_animWanted && _logoBitmap->data == logo_OpenKNX && _display->GetDisplayWidth() == 128 && _display->GetDisplayHeight() == 64)
+    {
+        _anim = new BootLogoAnim();
+        if (_anim->begin(_logoBitmap->data, _logoBitmap->width, _logoBitmap->height, openknx.info.firmwareName().c_str(),
+                         _animVersion ? openknx.info.humanFirmwareVersion().c_str() : nullptr,
+                         _animDate ? bootLogoBuildDate() : nullptr, _animAuthor))
+        {
+            _displayTime = BootLogoAnim::TOTAL_MS;
+            return;
+        }
+        delete _anim; // no heap for the logo copy: the static logo below
+        _anim = nullptr;
+    }
+    #endif
 
     // ========== OPTIMIZATION: Pre-calculate everything ONCE ==========
 
@@ -171,6 +195,15 @@ void WidgetBootLogo::loop()
     if (_state != WidgetState::RUNNING)
         return;
 
+    #ifdef DEVICE_DISPLAY_BOOT_ANIM
+    if (_anim)
+    {
+        // A new frame only once the last one left for the panel: one frame at a time, no torn frames.
+        if (_display && _display->display && !_display->flushPending() && _anim->tick(*_display->display, millis()))
+            _display->displayBuff();
+        return;
+    }
+    #endif
     drawBootLogo();
 }
 

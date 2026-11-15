@@ -1,6 +1,9 @@
 #ifdef DEVICE_DISPLAY_MODULE
 #pragma once
 #include "../Widget.h"
+#ifdef DEVICE_DISPLAY_BOOT_ANIM
+    #include "BootLogoAnim.h"
+#endif
 
 class WidgetBootLogo : public Widget
 {
@@ -15,8 +18,22 @@ class WidgetBootLogo : public Widget
     };
 
     WidgetBootLogo(uint32_t displayTime, WidgetFlags action, const LogoBitmap *logo = nullptr);
+#ifdef DEVICE_DISPLAY_BOOT_ANIM
+    ~WidgetBootLogo() { delete _anim; }
+#endif
     
     inline void setLogo(const LogoBitmap *logo) { _logoBitmap = logo; }
+
+#ifdef DEVICE_DISPLAY_BOOT_ANIM
+    /** @brief Plays BootLogoAnim instead of the static default logo (128x64 panel only); call before setup(). */
+    void useAnim(const char *author, bool version, bool buildDate)
+    {
+        _animWanted = true;
+        _animAuthor = author;
+        _animVersion = version;
+        _animDate = buildDate;
+    }
+#endif
     
     /**
      * @brief Set the step height for incremental drawing
@@ -54,6 +71,12 @@ class WidgetBootLogo : public Widget
 
   private:
     void drawBootLogo();
+
+#ifdef DEVICE_DISPLAY_BOOT_ANIM
+    BootLogoAnim *_anim = nullptr; // set in setup() when the animation runs
+    bool _animWanted = false, _animVersion = true, _animDate = true;
+    const char *_animAuthor = nullptr;
+#endif
 
     WidgetState _state;
     uint32_t _displayTime;
