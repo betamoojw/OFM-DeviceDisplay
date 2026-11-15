@@ -1,5 +1,6 @@
 #ifdef DEVICE_DISPLAY_MODULE
     #include "About.h"
+    #include "Doom.h"
     #include "OpenKNX.h"
     #include <math.h>
     #include <string.h>
@@ -17,6 +18,10 @@ namespace
 
     // Scramble glyphs for the decrypt effect (printable ASCII only; the resolved char may be 0x80).
     const char GLY[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#%&@?/<>*+=";
+
+    constexpr uint32_t ABOUT_IDLE_MS = 20000; // About closes after 20 s without a key
+    constexpr uint32_t SCENE_IDLE_MS = 60000;  // scene closes after 60 s without a key event
+    constexpr uint32_t SCENE_HELD_MS = 300000; // or after 5 min while a key is held (bounds a lost release)
 } // namespace
 
 WidgetAbout::WidgetAbout(uint32_t displayTime, WidgetFlags action)
@@ -52,8 +57,53 @@ void WidgetAbout::restart()
     if (_display && _display->display) _display->display->cp437(true); // map 0x80 -> Ç
 }
 
+WidgetAbout::~WidgetAbout() { delete _scene; }
+
+void WidgetAbout::open(bool unlocked)
+{
+    _unlocked = unlocked;
+    _held = 0;
+    _last = millis();
+    restart();
+}
+
+bool WidgetAbout::key(ButtonType type, bool press)
+{
+    const uint8_t bit = 1 << static_cast<uint8_t>(type);
+    _last = millis();
+    if (!press)
+    {
+        _held &= ~bit;
+        return false;
+    }
+    _held |= bit;
+    if (_scene) return _scene->press(bit); // 5-way key: no chords, the scene exits on title / game over
+    if (type == ButtonType::SELECT && _unlocked)
+    {
+        _scene = new DoomScene(_hi);
+        return false;
+    }
+    return true;
+}
+
+bool WidgetAbout::expired() const
+{
+    if (_scene) return millis() - _last > (_held ? SCENE_HELD_MS : SCENE_IDLE_MS);
+    return millis() - _last > ABOUT_IDLE_MS;
+}
+
+void WidgetAbout::close()
+{
+    if (!_scene) return;
+    _hi = _scene->hi();
+    _scene->end(_display);
+    delete _scene;
+    _scene = nullptr;
+}
+
 void WidgetAbout::stop()
 {
+    close();
     _state = WidgetState::STOPPED;
     if (_display)
     {
@@ -75,6 +125,7 @@ void WidgetAbout::resume()
 void WidgetAbout::loop()
 {
     if (_state != WidgetState::RUNNING || !_display) return;
+    if (_scene) return _scene->loop(_display, _held);
 
     const uint32_t now = millis();
     if (now - _lastUpdate < 33) return; // ~30 fps

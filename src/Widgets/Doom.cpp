@@ -1,6 +1,7 @@
 #ifdef DEVICE_DISPLAY_MODULE
     #include "Doom.h"
     #include "OpenKNX.h"
+    #include "OpenKNX/I2C/Wire1Lock.h"
     #include <math.h>
     #include <string.h>
 
@@ -291,5 +292,377 @@ void WidgetDoom::drawBanner(uint8_t idx, uint32_t elapsed, int16_t W, int16_t H)
     d->drawRect(0, 0, W, H, WHITE);
     d->setTextSize(1);
     _display->displayBuff();
+}
+
+// --- Interactive scene on the same raycaster -------------------------------------------
+namespace
+{
+    enum : uint8_t
+    {
+        CREDITS,
+        TITLE,
+        PLAY,
+        LEVEL,
+        OVER
+    };
+    constexpr uint8_t K_UP = 1, K_DOWN = 2, K_OK = 4, K_LEFT = 8, K_RIGHT = 16;
+    constexpr int16_t VH = 55;             // 3D view rows, HUD below
+    constexpr uint32_t SCENE_FRAME_MS = 55; // frame cap
+    constexpr int16_t SCENE_COLS = 32;      // columns rendered per loop()
+    constexpr float MOVE = 0.11f, TURN = 0.14f, RADIUS = 0.22f;
+    const char TITLE_TXT[] = "OKNX";
+
+    // Technician face 9x8 (normal, hurt, grin); bit 8 = left.
+    const uint16_t FACE[3][8] = {{0x07C, 0x0FE, 0x101, 0x145, 0x101, 0x139, 0x082, 0x07C},
+                                 {0x07C, 0x0FE, 0x101, 0x155, 0x129, 0x139, 0x0AA, 0x07C},
+                                 {0x07C, 0x0FE, 0x101, 0x16D, 0x101, 0x145, 0x0BA, 0x07C}};
+    // Probe gun 16x12 as GFX bitmaps: outline (lit) and body (dark, opaque).
+    const uint8_t GUN_LIT[24] = {0x03, 0xC0, 0x02, 0x40, 0x02, 0x40, 0x0F, 0xF0, 0x08, 0x10, 0x0B, 0xD0, 0x0A, 0x50, 0x0B, 0xD0, 0x18, 0x18, 0x20, 0x04, 0x48, 0x12, 0x88, 0x11};
+    const uint8_t GUN_DARK[24] = {0x00, 0x00, 0x01, 0x80, 0x01, 0x80, 0x00, 0x00, 0x07, 0xE0, 0x04, 0x20, 0x05, 0xA0, 0x04, 0x20, 0x07, 0xE0, 0x1F, 0xF8, 0x37, 0xEC, 0x77, 0xEE};
+
+    // Move by (mx, my) per axis unless the cell r ahead on that axis is a wall.
+    void slide(const uint16_t *m, float &x, float &y, float mx, float my, float r)
+    {
+        if (!rayWall(m, static_cast<int>(x + mx + (mx > 0 ? r : -r)), static_cast<int>(y))) x += mx;
+        if (!rayWall(m, static_cast<int>(x), static_cast<int>(y + my + (my > 0 ? r : -r)))) y += my;
+    }
+    const int8_t MUZZLE[9][2] = {{0, -2}, {-2, -3}, {2, -3}, {0, -4}, {-3, -1}, {3, -1}, {0, -6}, {-1, -3}, {1, -3}};
+
+    void face(Adafruit_SSD1306 *d, uint8_t f, int16_t x, int16_t y, uint8_t sc)
+    {
+        for (uint8_t r = 0; r < 8; ++r)
+            for (uint8_t b = 0; b < 9; ++b)
+                if ((FACE[f][r] >> (8 - b)) & 1) d->fillRect(x + b * sc, y + r * sc, sc, sc, WHITE);
+    }
+
+    void text(Adafruit_SSD1306 *d, const char *s, int16_t x, int16_t y, uint8_t size)
+    {
+        if (x < 0) return centerText(d, s, size, y, 128); // -1 = centred
+        d->setTextSize(size);
+        d->setCursor(x, y);
+        d->print(s);
+    }
+} // namespace
+
+DoomScene::DoomScene(uint16_t hi)
+{
+    memset(this, 0, sizeof(*this)); // plain data only; state CREDITS = 0
+    _t = millis();
+    _hi = hi;
+    _col = 128;
+}
+
+// Panel invert for the flash, relative to the user's invert setting; one command, no extra frame.
+void DoomScene::invert(i2cDisplay *disp, bool on)
+{
+    if (on == _invOn) return;
+    _invOn = on;
+    OPENKNX_WIRE1_LOCK();
+    disp->display->invertDisplay(on != disp->isInverted());
+}
+
+uint16_t DoomScene::rnd(uint16_t n)
+{
+    _rnd = _rnd * 1103515245u + 12345u;
+    return static_cast<uint16_t>((_rnd >> 16) % n);
+}
+
+void DoomScene::setState(uint8_t st)
+{
+    _st = st;
+    _t = millis();
+}
+
+// Level maze = the screensaver map, transposed and/or flipped per level (4 layouts).
+void DoomScene::gen()
+{
+    _rnd = 7919u * _level + 17u;
+    const uint8_t v = (_level - 1) & 3;
+    for (uint8_t y = 0; y < 16; ++y)
+    {
+        uint16_t row = 0;
+        for (uint8_t x = 0; x < 16; ++x)
+        {
+            uint8_t sx = x, sy = y;
+            if (v & 1) sx = y, sy = x;
+            if (v & 2) sy = 15 - sy;
+            row |= ((MAP[sy] >> sx) & 1u) << x;
+        }
+        _map[y] = row;
+    }
+    _px = _py = 1.5f;
+    _a = 0;
+    rayCamAt(_cam, _px, _py, _a);
+    memset(_zbuf, 255, sizeof(_zbuf)); // a shot before the first frame sees no wall
+    _spd = _level > 6 ? 0.088f : (0.8f + 0.12f * _level) * 0.055f; // bug speed: 0.0506 (L1) .. 0.088 (L7+) cells/frame = 0.92 .. 1.6 cells/s at the 55 ms frame cap
+    _nBug = 0;
+    const uint8_t want = _level + 2 > 6 ? 6 : _level + 2;
+    for (uint8_t guard = 0; _nBug < want && guard < 200; ++guard)
+    {
+        const uint8_t x = 1 + rnd(14), y = 1 + rnd(14);
+        const float dx = x + 0.5f - _px, dy = y + 0.5f - _py;
+        if (!rayWall(_map, x, y) && dx * dx + dy * dy > 25.0f)
+            _bug[_nBug++] = {x + 0.5f, y + 0.5f, static_cast<uint8_t>(_level >= 3 ? 2 : 1)};
+    }
+}
+
+bool DoomScene::press(uint8_t bit)
+{
+    if (_st == CREDITS) setState(TITLE);
+    else if ((_st == TITLE || _st == OVER) && bit == K_OK)
+    {
+        _fireAt = millis(); // the starting OK fires only if it is still held after the autofire delay
+        _level = 1;
+        _lives = 3;
+        _score = 0;
+        gen();
+        setState(PLAY);
+    }
+    else if ((_st == TITLE || _st == OVER) && bit == K_LEFT) return true;
+    else if (_st == PLAY && bit == K_OK) shoot(true);
+    return false;
+}
+
+bool DoomScene::los(float x, float y) const
+{
+    const float dx = x - _px, dy = y - _py;
+    const int n = static_cast<int>(sqrtf(dx * dx + dy * dy) * 4.0f) + 1;
+    for (int i = 1; i < n; ++i)
+        if (rayWall(_map, static_cast<int>(_px + dx * i / n), static_cast<int>(_py + dy * i / n))) return false;
+    return true;
+}
+
+// Hitscan along the centre column against the last frame's wall depth.
+void DoomScene::shoot(bool single)
+{
+    const uint32_t now = millis();
+    if (now - _fireAt < 300) return;
+    _fireAt = now;
+    _flash = 3;
+    if (single) _inv = 2; // two inverted frames; autofire does not flash
+    Bug *hit = nullptr;
+    float best = _zbuf[64] / 16.0f;
+    for (uint8_t i = 0; i < _nBug; ++i)
+    {
+        Bug &b = _bug[i];
+        if (!b.hp) continue;
+        const float rx = b.x - _px, ry = b.y - _py;
+        const float ty = _cam.dirX * rx + _cam.dirY * ry;
+        const float tx = _cam.dirX * ry - _cam.dirY * rx;
+        if (ty < 0.2f || ty > best || fabsf(tx) > 0.32f + 0.04f * ty) continue;
+        hit = &b;
+        best = ty;
+    }
+    if (hit && !--hit->hp)
+    {
+        _score += 10 * _level;
+        _face = 2;
+        _faceUntil = now + 700;
+    }
+}
+
+void DoomScene::step(uint8_t held)
+{
+    const uint32_t now = millis();
+    if (held & K_LEFT) _a -= TURN;
+    if (held & K_RIGHT) _a += TURN;
+    rayCamAt(_cam, _px, _py, _a);
+    const int f = ((held & K_UP) ? 1 : 0) - ((held & K_DOWN) ? 1 : 0);
+    if (f)
+    {
+        slide(_map, _px, _py, _cam.dirX * MOVE * f, _cam.dirY * MOVE * f, RADIUS);
+        _cam.px = _px;
+        _cam.py = _py;
+    }
+    if ((held & K_OK) && now - _fireAt > 350) shoot(false);
+
+    bool alive = false;
+    for (uint8_t i = 0; i < _nBug; ++i)
+    {
+        Bug &b = _bug[i];
+        if (!b.hp) continue;
+        alive = true;
+        const float dx = _px - b.x, dy = _py - b.y, d2 = dx * dx + dy * dy;
+        if (d2 < 49.0f && d2 > 0.2f && los(b.x, b.y))
+        {
+            const float k = _spd / sqrtf(d2);
+            slide(_map, b.x, b.y, dx * k, dy * k, 0);
+        }
+        if (d2 < 0.36f && now - _hurtAt > 1200)
+        {
+            _hurtAt = now;
+            _face = 1;
+            _faceUntil = now + 800;
+            if (!--_lives)
+            {
+                if (_score > _hi) _hi = _score;
+                setState(OVER);
+                return;
+            }
+        }
+    }
+    if (!alive)
+    {
+        ++_level;
+        setState(LEVEL);
+    }
+    if (_face && now > _faceUntil) _face = 0;
+}
+
+// Sprites, weapon, HUD and the invert flash on top of the finished wall columns.
+void DoomScene::drawFrame(i2cDisplay *disp)
+{
+    Adafruit_SSD1306 *d = disp->display;
+    const uint32_t now = millis();
+
+    // Bugs far to near so a nearer one covers a farther one.
+    uint8_t order[6], n = 0;
+    float dist[6];
+    for (uint8_t i = 0; i < _nBug; ++i)
+    {
+        if (!_bug[i].hp) continue;
+        const float rx = _bug[i].x - _px, ry = _bug[i].y - _py;
+        dist[i] = rx * rx + ry * ry;
+        uint8_t j = n++;
+        for (; j && dist[order[j - 1]] < dist[i]; --j)
+            order[j] = order[j - 1];
+        order[j] = i;
+    }
+    const bool leg = (now / 180) & 1;
+    for (uint8_t k = 0; k < n; ++k)
+    {
+        const Bug &b = _bug[order[k]];
+        const float rx = b.x - _px, ry = b.y - _py;
+        const float ty = _cam.dirX * rx + _cam.dirY * ry;
+        if (ty < 0.25f) continue;
+        const float tx = (_cam.dirX * ry - _cam.dirY * rx) * 1.515f; // 1 / plane length
+        int s = static_cast<int>(VH * 0.62f / ty);
+        if (s > 44) s = 44;
+        if (s < 3) continue;
+        const int scx = static_cast<int>(64.0f * (1.0f + tx / ty)), h = s >> 1, cy = VH / 2 + (s >> 3);
+        const int e = s >> 3 ? s >> 3 : 1;
+        const uint8_t zt = ty * 16.0f > 254.0f ? 254 : static_cast<uint8_t>(ty * 16.0f);
+        for (int c = -h; c <= h; ++c)
+        {
+            const int col = scx + c, ac = c < 0 ? -c : c;
+            if (col < 0 || col > 127 || _zbuf[col] < zt) continue;
+            const int w = (h - ac) >> 1;
+            d->drawFastVLine(col, cy - w - 1, 2 * w + 3, WHITE);
+            const int ex = ac - (h >> 1);
+            if (ex > -e && ex < e)
+                for (int r = 1 - e; r < e; ++r)
+                    d->drawPixel(col, cy - (w >> 1) + r, BLACK);
+            if (ac == (h >> 1)) // antenna
+                for (int a = 1; a <= (s >> 2); ++a)
+                    d->drawPixel(col + (c < 0 ? -(a >> 1) : (a >> 1)), cy - w - 1 - a, WHITE);
+            if (ac == (h >> 2) + 1 || ac == h - 1) // legs, two-step walk
+                for (int l = 1; l <= (s >> 3) + 1; ++l)
+                    d->drawPixel(col + (leg ? (l >> 1) : -(l >> 1)), cy + w + l, WHITE);
+        }
+    }
+
+    // Crosshair, gun with recoil, muzzle flash.
+    d->drawPixel(64, 25, WHITE);
+    d->drawPixel(64, 29, WHITE);
+    d->drawPixel(62, 27, WHITE);
+    d->drawPixel(66, 27, WHITE);
+    const int16_t gy = VH - 12 + (_flash > 1 ? 2 : 0);
+    d->drawBitmap(56, gy, GUN_DARK, 16, 12, BLACK);
+    d->drawBitmap(56, gy, GUN_LIT, 16, 12, WHITE);
+    if (_flash > 1)
+        for (uint8_t i = 0; i < 9; ++i)
+            d->drawPixel(64 + MUZZLE[i][0], gy + MUZZLE[i][1], WHITE);
+    if (_flash) --_flash;
+
+    // HUD: face, lives, score, high score, level.
+    d->fillRect(0, VH, 128, 64 - VH, BLACK);
+    d->drawFastHLine(0, VH, 128, WHITE);
+    face(d, _face, 0, VH + 1, 1);
+    char buf[24];
+    snprintf(buf, sizeof(buf), "\x03%u %04u HI%04u L%u", _lives, _score, _hi, _level);
+    text(d, buf, 12, VH + 1, 1);
+
+    // Shot: two inverted frames; hit: two blinks of 80 ms. Panel command, no extra frame.
+    const uint32_t ht = now - _hurtAt;
+    const bool inv = _inv || (_hurtAt && ht < 240 && (ht < 80 || ht >= 160));
+    if (_inv) --_inv;
+    invert(disp, inv);
+}
+
+void DoomScene::loop(i2cDisplay *disp, uint8_t held)
+{
+    Adafruit_SSD1306 *d = disp->display;
+    if (_col < 128) // finish the wall columns of the current frame
+    {
+        for (int16_t n = 0; _col < 128 && n < SCENE_COLS; ++_col, ++n)
+        {
+            const float z = rayColumn(d, _map, _cam, _col, 128, VH) * 16.0f;
+            _zbuf[_col] = z > 255.0f ? 255 : static_cast<uint8_t>(z);
+        }
+        if (_col == 128)
+        {
+            drawFrame(disp);
+            disp->displayBuff();
+        }
+        return;
+    }
+    const uint32_t now = millis();
+    if (now - _frameAt < SCENE_FRAME_MS) return;
+    _frameAt = now;
+    d->setTextColor(WHITE);
+    d->setTextWrap(false);
+    d->cp437(true);
+    if (_st == PLAY)
+    {
+        step(held);
+        if (_st == PLAY)
+        {
+            d->clearDisplay();
+            _col = 0;
+            return;
+        }
+    }
+    d->clearDisplay();
+    char buf[20];
+    switch (_st)
+    {
+        case CREDITS:
+            authorCard(d, 128);
+            d->drawRect(0, 0, 128, 64, WHITE);
+            if (now - _t > 2600) setState(TITLE);
+            break;
+        case TITLE:
+            face(d, 2, 4, 14, 4);
+            d->drawRect(0, 0, 128, 64, WHITE);
+            text(d, TITLE_TXT, 50, 8, 2);
+            snprintf(buf, sizeof(buf), "HI %04u", _hi);
+            text(d, buf, 50, 34, 1);
+            if ((now / 500) & 1) text(d, "OK start", 50, 50, 1);
+            break;
+        case LEVEL:
+            snprintf(buf, sizeof(buf), "LEVEL %u", _level);
+            text(d, buf, -1, 22, 2);
+            if (now - _t > 1500)
+            {
+                gen();
+                setState(PLAY);
+            }
+            break;
+        default: // OVER
+            text(d, "GAME OVER", -1, 6, 2);
+            snprintf(buf, sizeof(buf), "SCORE %04u", _score);
+            text(d, buf, -1, 28, 1);
+            snprintf(buf, sizeof(buf), "HI %04u", _hi);
+            text(d, buf, -1, 38, 1);
+            text(d, "OK again  \x11 exit", -1, 52, 1);
+            break;
+    }
+    invert(disp, false); // never leave a flash behind on a static screen
+    disp->displayBuff();
+}
+
+void DoomScene::end(i2cDisplay *disp)
+{
+    if (disp && disp->display) invert(disp, false);
 }
 #endif // DEVICE_DISPLAY_MODULE

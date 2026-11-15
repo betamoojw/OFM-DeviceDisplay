@@ -2,6 +2,8 @@
     #pragma once
     #include "../Widget.h"
 
+class DoomScene;
+
 // WidgetAbout: the About screen — a SciFi HUD that represents the developer. A live KNX
 // topology (coupler on a line bus with three devices) sits inside reticle corner brackets while
 // data PACKETS travel node -> bus -> node with a fading trail; the destination node pulses on
@@ -14,6 +16,7 @@ class WidgetAbout : public Widget
   public:
     const std::string logPrefix() { return "WidgetAbout"; }
     WidgetAbout(uint32_t displayTime, WidgetFlags action);
+    ~WidgetAbout() override;
 
     void setup() override;
     void start() override;
@@ -36,9 +39,16 @@ class WidgetAbout : public Widget
     void setDisplayModule(i2cDisplay *displayModule) override;
     i2cDisplay *getDisplayModule() const override;
 
-    // Restart the animation from the top (fresh credit cycle + packets). Called by DeviceDisplay
-    // each time the About screen is opened so it always begins on "(C) 2026 OpenKNX".
+    // Restart the animation from the top (fresh credit cycle + packets).
     void restart();
+
+    // Any key closes; unlocked (KONAMI) lets OK start the raycaster scene instead.
+    void open(bool unlocked);
+    bool key(ButtonType type, bool press); // returns true when About should close
+    bool expired() const;                  // idle timeout reached
+    void close();                          // ends the scene, restores the panel
+    uint8_t held() const { return _held; } // keys still down (1 << ButtonType)
+    bool sceneActive() const { return _scene != nullptr; }
 
   private:
     static constexpr uint8_t NODE_COUNT = 4; // coupler + 3 devices
@@ -59,6 +69,12 @@ class WidgetAbout : public Widget
     uint32_t _lastUpdate = 0;
     uint32_t _startTime = 0;
     std::string _name = "About";
+
+    DoomScene *_scene = nullptr;
+    uint32_t _last = 0; // millis() of the last key
+    uint16_t _hi = 0;   // scene high score, RAM only
+    uint8_t _held = 0;
+    bool _unlocked = false;
 
     Packet _pkt[PKT_COUNT];
     float _flash[NODE_COUNT] = {0, 0, 0, 0}; // per-node arrival pulse (decays each tick)

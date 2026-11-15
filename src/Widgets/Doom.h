@@ -85,4 +85,44 @@ class WidgetDoom : public Widget
     void drawTitle(uint32_t elapsed, int16_t W, int16_t H);                     // zooming full-screen DOOM
     void drawBanner(uint8_t idx, uint32_t elapsed, int16_t W, int16_t H);       // hidden-feature cards
 };
+
+/**
+ * @brief Interactive maze scene on the shared raycaster. Allocated on start, freed on exit (~300 B heap).
+ * @note  Keys are ButtonType bits (1 << type). One loop() renders at most 32 columns.
+ */
+class DoomScene
+{
+  public:
+    explicit DoomScene(uint16_t hi);
+    bool press(uint8_t bit);                         // returns true when the scene asks to close
+    void loop(i2cDisplay *disp, uint8_t held);       // non-blocking: one frame in chunks
+    void end(i2cDisplay *disp);                      // restore the panel invert state
+    uint16_t hi() const { return _hi; }
+
+  private:
+    struct Bug
+    {
+        float x, y;
+        uint8_t hp;
+    };
+    uint16_t _map[16];
+    uint8_t _zbuf[128]; // wall distance * 16 per column (255 = far)
+    Bug _bug[6];
+    RayCam _cam;
+    float _px, _py, _a, _spd;
+    uint32_t _rnd, _t, _frameAt, _fireAt, _hurtAt, _faceUntil;
+    uint16_t _score, _hi;
+    int16_t _col;
+    uint8_t _st, _level, _lives, _nBug, _inv, _flash, _face;
+    bool _invOn;
+
+    uint16_t rnd(uint16_t n);
+    void setState(uint8_t st);
+    void gen();
+    bool los(float x, float y) const;
+    void shoot(bool single);
+    void step(uint8_t held);
+    void drawFrame(i2cDisplay *disp);
+    void invert(i2cDisplay *disp, bool on);
+};
 #endif // DEVICE_DISPLAY_MODULE

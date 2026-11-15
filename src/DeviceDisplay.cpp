@@ -229,7 +229,7 @@ void DeviceDisplay::applyAllSettingsToRuntime()
     if (_menuWidget) _menuWidget->setIconMenu(_settingsStore.iconMenu());
 
     // "Display" hardware tuning from the store; also (re)seed the live "pending" mirror so the menu
-    // and a later save reflect the saved baseline (important after loadDefaults/KONAMI).
+    // and a later save reflect the saved baseline (important after loadDefaults).
     _pendDispRotate = _settingsStore.displayRotate();
     _pendDispPrechargeIdx = _settingsStore.preChargeIdx();
     _pendDispRefreshIdx = _settingsStore.refreshIdx();
@@ -373,7 +373,7 @@ void DeviceDisplay::saveWidgetSettings()
     _settingsStore.requestSave(); // settles in tickSave(), from the loop
 }
 
-// KONAMI unbrick sequence: UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT SELECT SELECT (OK replaces B/A).
+// KONAMI sequence: UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT SELECT SELECT (OK replaces B/A).
 bool DeviceDisplay::matchKonami(ButtonType t)
 {
     static const ButtonType SEQ[] = {
@@ -387,7 +387,6 @@ bool DeviceDisplay::matchKonami(ButtonType t)
         if (++_konamiPos >= N)
         {
             _konamiPos = 0;
-            triggerKonamiRestore();
             return true;
         }
     }
@@ -397,20 +396,6 @@ bool DeviceDisplay::matchKonami(ButtonType t)
         _konamiPos = (t == SEQ[0]) ? 1 : 0;
     }
     return false;
-}
-
-// Restore ALL display settings to defaults, apply live, PERSIST (survives reboot), wake + redraw.
-// The emergency escape when a saved config left the panel unreadable.
-void DeviceDisplay::triggerKonamiRestore()
-{
-    logInfoP("KONAMI: restoring display defaults");
-    _settingsStore.loadDefaults();
-    applyAllSettingsToRuntime();       // also re-seeds _pendDisp* from the fresh defaults
-    applyWidgetSettings();
-    _settingsStore.requestSave(true);  // persist so the fix survives a reboot
-    if (_widgetManager) _widgetManager->wakeUpDisplay();
-    if (_menuWidget) _menuWidget->rebuild();
-    showToast("Display defaults");
 }
 
 // Web hook: push the mutated store live, persist via the debounced saver. NOT consoleApplyAndSave() -- its
@@ -432,7 +417,7 @@ void DeviceDisplay::consoleApplyAndSave()
     if (_menuWidget) _menuWidget->rebuild();
 }
 
-// Console hook: restore ALL display settings to defaults (same path as the menu reset / KONAMI).
+// Console hook: restore ALL display settings to defaults (same path as the menu reset).
 void DeviceDisplay::consoleResetToDefaults()
 {
     _settingsStore.loadDefaults();
@@ -669,7 +654,7 @@ void DeviceDisplay::wireMenuCallbacks()
 
     // --- "Display" hardware tuning: LIVE preview ONLY, never auto-saved. Values go straight to the
     //     panel and into _pendDisp*; the store/flash are written ONLY by the disp_save action. This is
-    //     the safety net - a bad precharge/refresh can be reverted by a reboot (no save) or the KONAMI.
+    //     the safety net - a bad precharge/refresh can be reverted by a reboot (no save) or the menu Reset.
     _menuWidget->registerOnValueChanged("disp_rotate", [this](const MenuConfig::MenuOption&, const MenuValue& val) {
         _pendDispRotate = val.getBool();
         if (_displayModule) _displayModule->setRotation(_pendDispRotate); // flips the live scan
@@ -794,7 +779,7 @@ void DeviceDisplay::initializeWidgets()
     _gestureOverlay->setPriority(WidgetPriority::WIDGET_PRIO_CRITICAL);
     _widgetManager->addWidget(_gestureOverlay);
 
-    // About: "About" HUD shown on demand from the menu; any button or an auto-timeout dismisses it.
+    // About: HUD shown from the menu or by the KONAMI sequence; any key or an idle timeout closes it.
     // CRITICAL StatusWidget so it draws over the menu/rotation.
     _aboutWidget = new WidgetAbout(0, WidgetFlags::ManagedExternally);
     _aboutWidget->setAction(WidgetFlags::ManagedExternally | WidgetFlags::StatusWidget | WidgetFlags::WantsButtonInput);
@@ -878,8 +863,20 @@ void DeviceDisplay::loop(bool configured)
     // Show/hide the confirm overlay while a gesture is live (PreRoll..Done).
     updateGestureOverlay();
 
-    // About HUD: auto-dismiss after a while so it never gets stuck if the user walks away.
-    if (_aboutActive && (millis() - _aboutShownAt) > ABOUT_TIMEOUT_MS) hideAbout();
+    // About: close on idle timeout; its scene keeps the panel lit and ends on ProgMode or OTA.
+    if (_aboutActive)
+    {
+        bool end = _aboutWidget->expired();
+        if (_aboutWidget->sceneActive())
+        {
+            _widgetManager->userInteraction();
+            end = end || knx.progMode();
+    #ifdef DDISP_HAS_NETWORK_MODULE
+            end = end || openknxNetwork.otaActive();
+    #endif
+        }
+        if (end) hideAbout();
+    }
 
     // Handle ProgMode widget (ETS path + prog-exclusive display)
     handleProgMode();
@@ -920,8 +917,8 @@ void DeviceDisplay::forceHome()
 
     // Clear every latch that would otherwise eat the NEXT event and make the following test step
     // measure a state nobody asked for.
-    _aboutSwallowRelease = false;
     _swallowMask = 0;
+    _konamiPos = 0;
 
     // Disarm any half-held gesture so the engine folds back to Idle and can re-arm.
     _gestureEngine.endHold();
@@ -959,10 +956,25 @@ void DeviceDisplay::handleButtonEvent(const ButtonEvent& event)
 {
     if (!_widgetManager) return;
 
-    // KONAMI unbrick: record every PRESS here - BEFORE the swallow/wake/routing below - so the code
-    // works even when the display is off or misconfigured. On full match it restores + saves defaults.
-    if (event.action == ButtonAction::PRESS && matchKonami(event.type))
-        return; // sequence completed this press -> consume it
+    // KONAMI: record every PRESS here - BEFORE the swallow/wake/routing below - so the code also works on a
+    // dark panel. It opens About unlocked (not in ProgMode). Both OKs are dropped with their releases, so neither
+    // runs the menu entry under the cursor. Not counted while the scene runs: the sequence is a normal key series there.
+    const bool sceneRuns = _aboutActive && _aboutWidget->sceneActive();
+    if (event.action == ButtonAction::PRESS && !sceneRuns)
+    {
+        const bool done = matchKonami(event.type);
+        if (!knx.progMode() && (done || _konamiPos == KONAMI_FIRST_OK))
+        {
+            _swallowMask |= buttonBit(event.type);
+            if (!done) return; // first OK after the eight arrows: dropped
+            if (_menuWidget) _menuWidget->externalClose();
+            _gestureEngine.endHold();
+            _gestureButtonArmed = false;
+            _gestureReachedBar = false;
+            showAbout(true);
+            return;
+        }
+    }
 
     // Latched button (held after the DisplayOff gesture, or the press that woke a dark panel): swallow its
     // release, before userInteraction(), so it neither re-wakes nor acts, and end its hold if it is the armed button.
@@ -985,6 +997,15 @@ void DeviceDisplay::handleButtonEvent(const ButtonEvent& event)
         if (letGo) return;
     }
 
+    // About (pages and scene) takes every key, before the dark-panel path and before armGesture(): no hold
+    // gesture can arm while it is shown. A closing key's release is swallowed via held() in hideAbout().
+    if (_aboutActive)
+    {
+        _widgetManager->userInteraction();
+        if (_aboutWidget->key(event.type, event.action == ButtonAction::PRESS)) hideAbout();
+        return;
+    }
+
     // Panel dark (Sleep/Off): a press wakes it and arms its gesture; the latch above swallows the
     // release, so a short press only wakes and a hold fires its gesture as on a lit panel.
     const PowerSaveMode powerSave = _widgetManager->getPowerSaveMode();
@@ -1004,22 +1025,6 @@ void DeviceDisplay::handleButtonEvent(const ButtonEvent& event)
     if (!releaseOfArmedGesture)
         _widgetManager->userInteraction();
 
-    // About screen: any button dismisses it and returns to the menu. Dismiss on the PRESS, then
-    // swallow the paired RELEASE so it neither navigates the menu nor arms a gesture.
-    if (_aboutActive)
-    {
-        if (event.action == ButtonAction::PRESS)
-        {
-            hideAbout();
-            _aboutSwallowRelease = true;
-        }
-        return;
-    }
-    if (_aboutSwallowRelease && event.action != ButtonAction::PRESS)
-    {
-        _aboutSwallowRelease = false;
-        return;
-    }
     const bool isPress = (event.action == ButtonAction::PRESS);
 
     if (isPress)
@@ -1303,16 +1308,15 @@ void DeviceDisplay::drawToast()
 }
 
 /**
- * @brief Show the About HUD (menu "About"). CRITICAL StatusWidget drawn over the menu/rotation; the
- * ProgMode widget is suppressed while shown (restored on hide). Dismissed on any button / timeout.
+ * @brief Show About (menu, or KONAMI with unlocked = true). CRITICAL StatusWidget drawn over the menu/rotation;
+ * the ProgMode widget is suppressed while shown (restored on hide). Any key or a timeout closes it.
  */
-void DeviceDisplay::showAbout()
+void DeviceDisplay::showAbout(bool unlocked)
 {
     if (!_aboutWidget) return;
     _aboutActive = true;
-    _aboutSwallowRelease = false;
-    _aboutShownAt = millis();
-    _aboutWidget->restart(); // fresh credit cycle each time it opens
+    _konamiPos = 0;               // a sequence half typed before About must not complete afterwards
+    _aboutWidget->open(unlocked); // fresh credit cycle
     if (knx.progMode() && _progModeWidget)
         _progModeWidget->removeAction(WidgetFlags::DisplayEnabled);
     _aboutWidget->addAction(DisplayEnabled);
@@ -1323,6 +1327,8 @@ void DeviceDisplay::hideAbout()
 {
     if (!_aboutWidget || !_aboutActive) return;
     _aboutActive = false;
+    _swallowMask |= _aboutWidget->held();
+    _aboutWidget->close();
     _aboutWidget->removeAction(DisplayEnabled);
     if (knx.progMode() && _progModeWidget)
         _progModeWidget->addAction(WidgetFlags::DisplayEnabled);

@@ -75,8 +75,8 @@ struct DisplaySettings
     uint16_t sleepMin = 60;
 
     // --- "Panel" hardware tuning (Display -> Panel). Live-previewed, saved ONLY on manual confirm
-    //     (so a bad value never auto-persists). "Zuruecksetzen" and the KONAMI code DO restore these to
-    //     their safe defaults (below) - that is a recovery path, not a risk. ---
+    //     (so a bad value never auto-persists). "Reset" DOES restore these to their safe defaults
+    //     (below) - that is a recovery path, not a risk. ---
     bool displayRotate = false; // 180deg rotation (segment remap + COM scan) for upside-down mounting
     uint8_t preChargeIdx = 5;   // pre-charge preset idx (0..5); default = 0xF1 (bright, Adafruit init)
     uint8_t refreshIdx = 3;     // clock/refresh preset idx (0..5); default = 0x80 (Adafruit init)

@@ -363,7 +363,7 @@ namespace DefaultMenus
     }
 
     // Display (hardware tuning) submenu: LIVE preview, saved ONLY via "Save". A bad value
-    // never auto-persists (would brick the panel); the KONAMI code restores defaults.
+    // never auto-persists (would brick the panel); "Reset" restores defaults.
     MENU_NOINLINE inline void addDisplayTuningRow(std::vector<MenuOption>& dst)
     {
         addRow(dst, [](MenuOption& displaySub) {
@@ -411,7 +411,7 @@ namespace DefaultMenus
         addRow(roots, [](MenuOption& anzeige) {
             anzeige.label = "Display";
             anzeige.type = MenuConfig::MenuElementType::Submenu;
-            anzeige.sortOrder = 30; // visible for all (reset + KONAMI + manual-save protect the tunings)
+            anzeige.sortOrder = 30; // visible for all (reset + manual-save protect the tunings)
 
             auto& sub = anzeige.submenu;
             sub.reserve(12);

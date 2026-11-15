@@ -118,23 +118,21 @@ class DeviceDisplay : public OpenKNX::Module
     WidgetOTA* _otaWidget = nullptr;                 // SYSTEM-priority OTA update overlay (over everything)
 
     // "Display" hardware tuning: live-previewed values NOT yet persisted. The store holds the saved
-    // value; these hold the currently-applied one. disp_save copies pending -> store. Boot/apply/KONAMI
+    // value; these hold the currently-applied one. disp_save copies pending -> store. Boot/apply/reset
     // seed pending FROM the store. So the menu always shows what is live, save commits it.
     bool _pendDispRotate = false;
     uint8_t _pendDispPrechargeIdx = 5;
     uint8_t _pendDispRefreshIdx = 3;
 
-    uint8_t _konamiPos = 0; // KONAMI unbrick-sequence match position (see handleButtonEvent)
+    uint8_t _konamiPos = 0;                          // KONAMI sequence match position (see handleButtonEvent)
+    static constexpr uint8_t KONAMI_FIRST_OK = 9;    // _konamiPos after the first OK has matched
 
-    // About HUD state: shown from the menu, dismissed by any button or an auto-timeout.
-    bool _aboutActive = false;            // About HUD currently displayed
-    bool _aboutSwallowRelease = false;    // eat the RELEASE paired with a dismissing PRESS
+    // About pages: shown from the menu or by the KONAMI sequence; they get every key while shown.
+    bool _aboutActive = false; // About currently displayed
     // One bit per ButtonType: swallow the release (RELEASE/LONG_PRESS/VERY_LONG_PRESS) of a button still held
     // after a gesture forced the display OFF, or of the press that woke a dark panel.
     uint8_t _swallowMask = 0;
     static uint8_t buttonBit(ButtonType type) { return static_cast<uint8_t>(1u << static_cast<uint8_t>(type)); }
-    uint32_t _aboutShownAt = 0;                         // millis() when shown (for the auto-timeout)
-    static constexpr uint32_t ABOUT_TIMEOUT_MS = 20000; // auto-dismiss after ~8 credit cycles
 
     // Hold-to-confirm gesture engine. Owned by the module (value member so it
     // lives as long as DeviceDisplay). Wired to the WidgetsManager/knx callbacks in init().
@@ -198,10 +196,8 @@ class DeviceDisplay : public OpenKNX::Module
     void applyWidgetOrder();
     void applyWidgetSettings();
     void captureWidgetSettings();
-    // KONAMI unbrick: advance the sequence matcher with one button PRESS; returns true (and restores +
-    // saves defaults) when the full code is entered. Works blind (display off/misconfigured).
+    // KONAMI: advance the sequence matcher with one button PRESS; returns true when the full code is entered.
     bool matchKonami(ButtonType t);
-    void triggerKonamiRestore();
     void initializeWidgets();
 
     // Register the display-submenu onValueChanged callbacks and wire the
@@ -222,7 +218,7 @@ class DeviceDisplay : public OpenKNX::Module
     void updateGestureOverlay();
 
     // Show / dismiss the About HUD (menu "About"). See the implementation for the display handoff.
-    void showAbout();
+    void showAbout(bool unlocked = false);
     void hideAbout();
 
     // Enter/leave the prog-exclusive display mode (suppress rotation/menu/screensaver).
@@ -279,7 +275,7 @@ class DeviceDisplay : public OpenKNX::Module
     DisplaySettingsStore& getSettingsStore() { return _settingsStore; }
 
     // Console (ddc config) hooks: after mutating the store via getSettingsStore(), push it live +
-    // persist + refresh the menu; or restore all defaults the same way (also the KONAMI action).
+    // persist + refresh the menu; or restore all defaults the same way.
     void consoleApplyAndSave();
     void consoleResetToDefaults();
 
