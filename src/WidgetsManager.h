@@ -190,6 +190,15 @@ class WidgetsManager // Manages the widget queue and state machine
     // Switch the rotation to this DefaultWidget, as a manual switch would. Only from the rotation view
     // (no status widget, menu or screensaver up). Returns true when the widget is shown.
     bool showDefaultWidget(Widget* widget);
+    // Pin: this DefaultWidget holds the rotation view instead of the rotation (one at a time, the last call wins).
+    // Status widgets, the menu and the power-save stages still go first; LEFT/RIGHT/UP/DOWN still work, and
+    // PIN_RETURN_MS after the last of those keys the pinned widget comes back, on its first page. A disabled
+    // widget is not pinned while it stays disabled. unpin() hands the widget back to the rotation with the time
+    // of the page it shows.
+    static constexpr uint32_t PIN_RETURN_MS = 30000;
+    void pin(Widget* widget);
+    void unpin(Widget* widget);
+    Widget* pinnedWidget() const;
 
     // Page/rotation status text for the Home overlay: "n/N" (1-based) for a multi-page current
     // widget, "manual" when paused and single-page, otherwise empty.
@@ -268,6 +277,8 @@ class WidgetsManager // Manages the widget queue and state machine
 
     bool _autoPagingEnabled = false;
     bool _busMonActive = false;
+    Widget* _pinned = nullptr; // see pin()
+    uint32_t _pinKeyAt = 0;    // millis() of the last navigation key while pinned, 0 = none: the pin takes the view
     FrameCurrent _frameCurrent = nullptr;
 
     // Index (into _defaultOrder) of the currently grabbed widget in reorder mode, -1 if none.

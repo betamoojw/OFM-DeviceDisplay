@@ -1,5 +1,6 @@
 #ifdef DEVICE_DISPLAY_MODULE
     #include "WidgetsManager.h"
+    #include "Icons/UiIcons.h"
     #include "OpenKNX.h"
     #include "Settings/DisplaySettings.h"
 
@@ -137,9 +138,9 @@ void WidgetsManager::loop()
 
 /**
  * @brief Draw the manager corner (x116..127, y0..8) over the current DefaultWidget view:
- *        blinking "BM" while a busmonitor runs, else pause bars or the play triangle while
- *        widgets rotate. Not drawn over the menu, prog-exclusive or screensaver views.
- *        Draws into the Adafruit buffer; the caller flushes right after.
+ *        blinking "BM" while a busmonitor runs, else a lock on the pinned widget, else pause bars or
+ *        the play triangle while widgets rotate. Not drawn over the menu, prog-exclusive or
+ *        screensaver views. Draws into the Adafruit buffer; the caller flushes right after.
  */
 void WidgetsManager::drawManagerOverlay()
 {
@@ -165,6 +166,8 @@ void WidgetsManager::drawManagerOverlay()
         d->print("BM");
         d->setTextColor(WHITE);
     }
+    else if (pinnedWidget() && _currentWidget == pinnedWidget())
+        d->drawBitmap(bx + 2, 0, OpenKNX::Ui::kRowLock, 9, 9, WHITE); // the pinned widget holds the rotation
     else if (_rotationPaused || shouldRotateWidgets())
     {
         // Rotation state, independent of auto paging (sub-pages): pause bars or play triangle.
@@ -352,6 +355,7 @@ void WidgetsManager::removeWidgetFromQueue(const char* widgetName)
                 }
             }
 
+            if (widget == _pinned) _pinned = nullptr;
             _widgetQueue.erase(it);
             delete widget;
             return;
@@ -722,6 +726,30 @@ void WidgetsManager::handleDefaultState(uint32_t currentTime)
     {
         logDebugP("No DefaultWidget found!");
         return;
+    }
+
+    // A pinned widget holds the view; PIN_RETURN_MS after the last navigation key it is back, on its first page.
+    if (Widget* pinned = pinnedWidget())
+    {
+        // A key stamped after currentTime (same ms, or later in this pass) counts as just pressed, not as 49 days ago.
+        const uint32_t sinceKey = currentTime - _pinKeyAt;
+        const bool due = _pinKeyAt == 0 || (sinceKey >= PIN_RETURN_MS && sinceKey <= UINT32_MAX - PIN_RETURN_MS);
+        if (due && (_currentWidget != pinned || _pinKeyAt != 0))
+        {
+            if (_currentWidget != pinned) switchToWidget(pinned, currentTime, "pinned");
+            if (pinned->getPageCount() > 1 && pinned->getCurrentPage() != 0) pinned->setPage(0);
+        }
+        if (due) _pinKeyAt = 0;
+        if (_currentWidget == pinned)
+        {
+            _currentTime = UINT32_MAX; // no time-based switch and no auto paging while pinned
+            if (pinned->getState() == WidgetState::PAUSED)
+                pinned->resume();
+            else if (pinned->getState() == WidgetState::STOPPED)
+                pinned->start(); // the power-save Off stage stopped it
+            if (pinned->getState() == WidgetState::RUNNING) pinned->loop();
+            return;
+        }
     }
 
     // Check if we need to switch widgets
@@ -1635,6 +1663,7 @@ void WidgetsManager::switchToDefaultWidgetManual(Widget* widget, uint32_t curren
  */
 void WidgetsManager::nextWidgetManual()
 {
+    if (_pinned) _pinKeyAt = millis() | 1; // 0 means none
     Widget* target = findAdjacentDefaultWidget(+1);
     if (!target) return;
     logDebugP("Manual switch (next): %s", target->getName().c_str());
@@ -1656,10 +1685,45 @@ bool WidgetsManager::showDefaultWidget(Widget* widget)
 }
 
 /**
+ * @brief Pins a DefaultWidget (see the header); a widget pinned already keeps its state, so a caller may repeat it.
+ */
+void WidgetsManager::pin(Widget* widget)
+{
+    if (widget == nullptr || widget == _pinned) return;
+    _pinned = widget;
+    _pinKeyAt = 0; // takes the view at once
+    if (_currentWidget == widget && widget->getPageCount() > 1) widget->setPage(0);
+}
+
+/**
+ * @brief Ends the pin of this widget; shown, it stays for the time of its page, as after a page flip.
+ */
+void WidgetsManager::unpin(Widget* widget)
+{
+    if (widget == nullptr || widget != _pinned) return;
+    _pinned = nullptr;
+    _pinKeyAt = 0;
+    if (_currentWidget != widget) return;
+    const uint32_t now = millis();
+    const uint32_t total = widget->getDisplayTime();
+    const size_t pages = widget->getPageCount();
+    const uint32_t slice = pages > 1 ? total / static_cast<uint32_t>(pages) : total;
+    _currentWidgetStartTime = _autoPagingEnabled ? now - static_cast<uint32_t>(widget->getCurrentPage()) * slice : now;
+    _currentTime = (_rotationPaused || !shouldRotateWidgets()) ? UINT32_MAX : _currentWidgetStartTime + total;
+}
+
+/** @brief The pinned widget while it is an enabled DefaultWidget, else nullptr. */
+Widget* WidgetsManager::pinnedWidget() const
+{
+    return _pinned != nullptr && (_pinned->getAction() & DefaultWidget) && _pinned->isEnabled() ? _pinned : nullptr;
+}
+
+/**
  * @brief Manually switch to the previous DefaultWidget in user order
  */
 void WidgetsManager::prevWidgetManual()
 {
+    if (_pinned) _pinKeyAt = millis() | 1;
     Widget* target = findAdjacentDefaultWidget(-1);
     if (!target) return;
     logDebugP("Manual switch (prev): %s", target->getName().c_str());
@@ -1757,6 +1821,7 @@ static inline size_t wrapPage(size_t page, int dir, size_t count)
  */
 void WidgetsManager::pageUp()
 {
+    if (_pinned) _pinKeyAt = millis() | 1;
     Widget* current = _currentWidget;
     if (!current) return;
     const size_t pageCount = current->getPageCount();
@@ -1780,6 +1845,7 @@ void WidgetsManager::pageUp()
 
 void WidgetsManager::pageDown()
 {
+    if (_pinned) _pinKeyAt = millis() | 1;
     Widget* current = _currentWidget;
     if (!current) return;
     const size_t pageCount = current->getPageCount();
