@@ -11,6 +11,20 @@ Entries are grouped by module version; every line traces to a commit in this rep
 * Fix (live view): `/display/fb.bin`, the live stream and screenshots show the last frame sent to the panel; the Doom screensaver draws a frame over several loops, so the view showed half-drawn frames
 * Fix (menu): a rebuild with the menu open, e.g. Display -> Reset, frees the old menu tree before it builds the new one instead of holding both, and moves the display entries into the new tree instead of copying them
 * Change (Doom): the raycaster column code moved to `Raycaster.cpp` and the maze is a 16x16 bitmask; the picture is unchanged
+* Feature (widgets): `OpenKNX::Ui` in `src/DisplayUi.h` draws what every widget shares: header with page dots, rows, icon rows, status card, big value, badge, bar, key hint and graph. `src/Icons/UiIcons.h` holds the 9x9 row icons, 13x13 badges and 32x32 menu icons. The line under the title is dotted and swaps its phase every minute, so each of its pixels is lit half of the time
+* Change (menu): lists show the menu name and "n/m" in the header, rows in 10 px steps and a scrollbar from 6 entries; toggles read "On" / "Off" instead of a switch bitmap
+* Change (icon menu): the root is a carousel with the 32x32 icon of the entry, half-size neighbours, name and info line. The icon comes from `src/Icons/UiIcons.h` by the label; `MenuOption::icon` is no longer drawn
+* Change (text editor): neighbour characters and the groups abc ABC 123 #+= are shown; holding UP or DOWN jumps to the next or previous group. A text item can limit its length (`ip[0]`) and its characters (`dropdownOptions[0]`)
+* Change (ProgMode, OTA, hold gesture): the full-screen views use the shared header; the hold gesture names the action and shows the remaining time as "2.6 s"
+* Change: the console widget SysInfoLite (`ddc sysinfo`) is removed; the Time widget shows the time, the System-Info widget of OGM-Common the up time and the address
+* Change (rotation): Auto paging is off by default: each widget comes in on its first page, UP/DOWN flip the sub-pages and a flipped page gets the full display time. The icon menu is on by default. These are defaults: stored display settings stay, so a device that stored its display settings before keeps auto paging on and the text menu until Display -> Auto paging, Icon menu or Reset
+* Change (manager corner): play or pause is shown whenever widgets rotate, also without auto paging; the pinned widget shows a lock
+* Feature (toast): `toast()`, `toastText()` and `retractToast()` show short messages over the current view: at the bottom for Info and Ok (2.5 s) and Warn (5 s), as a banner while the menu is open, as an error card until OK or LEFT. One is shown and three wait, errors first; the same first line within 10 s counts up ("x3"); a retracted message that returns within 60 s counts on and does not wake the panel again. Warn and Error wake a dimmed panel, the screensaver or sleep; a panel switched off by the gesture lets them wait. Console: `ddc toast <i|o|w|e> <text>`
+* Change (toast): `showToast()` takes a `const char*` and shows an Info toast over the view; before, it cleared the screen and held the text 1.8 s
+* Feature: switching dimming, screensaver or sleep off shows "Screen may burn in" once
+* Feature (pin): `WidgetsManager::pin()` / `unpin()` keep a widget on screen instead of the rotation; LEFT/RIGHT/UP/DOWN still work, and 30 s after the last of them the pinned widget is back on its first page. A status widget, the menu and the screensaver still go first. `showDefaultWidget()` is removed
+* Fix (rotation): a manual widget switch shortly before the `millis()` wrap (49.7 days) caused several widget switches within a second
+* Docs: `doc/design` holds the display design handbook (`index.html`), the rules, the fixed values, the toast rules and a widget template
 
 ## v0.1.2: 2026-11-05
 
