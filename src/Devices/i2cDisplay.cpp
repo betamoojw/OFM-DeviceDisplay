@@ -153,7 +153,7 @@ void i2cDisplay::setup()
 }
 
 /**
- * @brief Non-blocking partial transfer: push at most FLUSH_PAGES_PER_LOOP dirty pages per call so
+ * @brief Non-blocking partial transfer: push one chunk of at most FLUSH_CHUNK_COLS dirty columns per call so
  *        a full-frame change never blocks the loop (whole 128x64 push at 400kHz was ~54ms).
  */
 void i2cDisplay::loop()
@@ -170,23 +170,43 @@ void i2cDisplay::loop()
     const int pages = lcdSettings.height / 8;
     const int width = lcdSettings.width;
     if (pages <= 0) return;
-    uint8_t pushed = 0;
-    // Round-robin the scan start so a page re-dirtied every frame never starves the lower body pages.
-    for (int i = 0; i < pages && i < MAX_PAGES && pushed < FLUSH_PAGES_PER_LOOP; i++)
+    // One chunk per call, then the next dirty page; inside a page the send column runs on and wraps. So a column
+    // that differs from the panel goes out within pages x (chunks per page + 1) calls (128x64: 40), however often
+    // a frame changes one page again.
+    for (int i = 0; i < pages && i < MAX_PAGES; i++)
     {
         const int page = (_flushCursor + i) % pages;
         if (!_pageDirty[page]) continue;
-        const int startCol = _dirtyStartCol[page];
-        const int endCol = _dirtyEndCol[page];
-        updatePage(page, startCol, endCol); // one bounded I2C transfer for this page's dirty range
-        for (int col = startCol; col <= endCol; col++)
+        const int start = _dirtyStartCol[page], end = _dirtyEndCol[page];
+        const int c0 = (_sendCol[page] < start || _sendCol[page] > end) ? start : _sendCol[page];
+        const int c1 = (end - c0 >= FLUSH_CHUNK_COLS) ? c0 + FLUSH_CHUNK_COLS - 1 : end;
+        updatePage(page, c0, c1); // one chunk: the window and its columns
+        const size_t row = (size_t)page * width;
+        memcpy(&_prevDispBuffer[row + c0], &_curDispBuffer[row + c0], c1 - c0 + 1); // this range is now on-screen
+        _sendCol[page] = (int16_t)(c1 >= end ? -1 : c1 + 1); // a chunk that reaches the end starts the next lap at the start
+        const uint8_t bit = (uint8_t)(1u << page);
+        if (_sendAll & bit)
         {
-            const size_t index = (size_t)page * width + col;
-            _prevDispBuffer[index] = _curDispBuffer[index]; // this page's range is now on-screen
+            if (c1 < width - 1) // markAllDirty(): the range stays [0, width - 1] until its last chunk is out
+            {
+                _flushCursor = (uint8_t)((page + 1) % pages);
+                return;
+            }
+            _sendAll &= (uint8_t)~bit;
         }
-        _pageDirty[page] = false;
-        pushed++;
-        _flushCursor = (uint8_t)((page + 1) % pages); // continue after this page on the next loop()
+        // The range shrinks to the columns that still differ from the panel; none left = page done.
+        int s = start, e = end;
+        while (s <= e && _curDispBuffer[row + s] == _prevDispBuffer[row + s]) s++;
+        while (e >= s && _curDispBuffer[row + e] == _prevDispBuffer[row + e]) e--;
+        if (s > e)
+            _pageDirty[page] = false;
+        else
+        {
+            _dirtyStartCol[page] = (int16_t)s;
+            _dirtyEndCol[page] = (int16_t)e;
+        }
+        _flushCursor = (uint8_t)((page + 1) % pages);
+        return;
     }
 }
 
@@ -446,7 +466,7 @@ void i2cDisplay::setRotation(bool flip180)
 }
 
 /**
- * @brief Send the whole frame again on the next loop() passes.
+ * @brief Send the whole frame again over the next loop() calls (chunked path: one chunk per call, up to 32 calls).
  */
 void i2cDisplay::markAllDirty()
 {
@@ -458,6 +478,9 @@ void i2cDisplay::markAllDirty()
         _dirtyStartCol[page] = 0;
         _dirtyEndCol[page] = (int16_t)(lcdSettings.width - 1);
     }
+    // Chunked path: each page goes out once from column 0 to the end, whatever frames arrive meanwhile.
+    _sendAll = (uint8_t)((1u << (pages < MAX_PAGES ? pages : MAX_PAGES)) - 1);
+    for (int page = 0; page < MAX_PAGES; page++) _sendCol[page] = 0;
 }
 
 /**
@@ -657,7 +680,7 @@ bool i2cDisplay::initDisplayBuffer()
 }
 
 /**
- * @brief UPdate the page of the display.
+ * @brief Update the page of the display.
  * @param page to update
  * @param startCol of the page
  * @param endCol of the page
@@ -667,17 +690,13 @@ void i2cDisplay::updatePage(int page, int startCol, int endCol)
     if (startCol > endCol) return;
     // Push in small column chunks, each in its own Wire1 lock scope, so the bus is held <1ms/chunk and
     // the LED flush isn't starved. Each chunk re-arms the page+column window (the LED write may run in between).
-    static constexpr int WIRE1_CHUNK_COLS = 32; // ~<1 ms bus hold @ 400 kHz
-    for (int c0 = startCol; c0 <= endCol; c0 += WIRE1_CHUNK_COLS)
+    for (int c0 = startCol; c0 <= endCol; c0 += FLUSH_CHUNK_COLS)
     {
-        const int c1 = (c0 + WIRE1_CHUNK_COLS - 1 < endCol) ? (c0 + WIRE1_CHUNK_COLS - 1) : endCol;
-        OPENKNX_WIRE1_LOCK();                                // released each iteration so the LED can slip in
-        sendCommandUnlocked(SSD1306_PAGEADDR);               // Set the page address
-        sendCommandUnlocked(page);                           // start page
-        sendCommandUnlocked(page);                           // end page (single page)
-        sendCommandUnlocked(SSD1306_COLUMNADDR);             // Set the column address
-        sendCommandUnlocked(c0);                             // chunk start column
-        sendCommandUnlocked(c1);                             // chunk end column
+        const int c1 = (c0 + FLUSH_CHUNK_COLS - 1 < endCol) ? (c0 + FLUSH_CHUNK_COLS - 1) : endCol;
+        OPENKNX_WIRE1_LOCK(); // released each iteration so the LED can slip in
+        // Page and column window in one transfer, as the queued path sends it (one driver call instead of six)
+        const uint8_t window[6] = {SSD1306_PAGEADDR, (uint8_t)page, (uint8_t)page, SSD1306_COLUMNADDR, (uint8_t)c0, (uint8_t)c1};
+        sendCommandListUnlocked(window, sizeof(window));
         CustomI2C->beginTransmission(lcdSettings.i2cadress); // Begin the transmission of the changes
         CustomI2C->write(0x40);                              // Set the data mode
         for (int col = c0; col <= c1; col++)                 // Loop through this chunk's columns

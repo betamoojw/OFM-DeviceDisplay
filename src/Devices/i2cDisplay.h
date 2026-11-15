@@ -135,14 +135,16 @@ class i2cDisplay
     uint32_t _composedKey = 0;
     uint32_t _composedHash = 0;
 
-    // Non-blocking flush: displayBuff() diffs and records dirty page/column ranges (no I2C); loop()
-    // pushes at most FLUSH_PAGES_PER_LOOP dirty pages per iteration so a full-frame change never blocks.
-    static constexpr uint8_t MAX_PAGES = 8;            // 64px / 8 (also covers 32px displays)
-    static constexpr uint8_t FLUSH_PAGES_PER_LOOP = 1; // pages pushed per loop() -> bounds the I2C time
+    // Non-blocking flush: displayBuff() diffs and records dirty page/column ranges (no I2C); loop() pushes one
+    // chunk of at most FLUSH_CHUNK_COLS columns per call (unqueued path), so a full-frame change never blocks.
+    static constexpr uint8_t MAX_PAGES = 8;         // 64px / 8 (also covers 32px displays)
+    static constexpr int FLUSH_CHUNK_COLS = 32;     // columns per transfer and per loop() -> about 1.2 ms on ESP32
     bool _pageDirty[MAX_PAGES] = {false};
     int16_t _dirtyStartCol[MAX_PAGES] = {0};
     int16_t _dirtyEndCol[MAX_PAGES] = {0};
     uint8_t _flushCursor = 0; // round-robin scan start so a page re-dirtied every frame can't starve lower pages
+    int16_t _sendCol[MAX_PAGES] = {0}; // unqueued path: next column to send in a page, wraps to the dirty start
+    uint8_t _sendAll = 0;              // unqueued path: pages markAllDirty() sends in full (bit per page)
 
     // __TESTING__
     bool __loopColumnMethod = false; // Enable the loop column for partial display updates. Default is false.
