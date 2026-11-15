@@ -10,7 +10,7 @@
 A widget-based OLED display manager for OpenKNX devices: a priority/state-machine widget engine with power-save, a 5-way button system with **hold-to-confirm gestures**, a **runtime menu** (registry-driven, in-place editors, on-device network config), and **flash-persisted settings**.
 
 **What it can do:**
-- **Widgets**: boot logo, clock, time, sysinfo, QR, about, screensavers (Matrix/Doom/Life/…) + your own
+- **Widgets**: boot logo, clock, time, QR, about, screensavers (Matrix/Doom/Life/…) + your own
 - **Priority engine**: CRITICAL > HIGH > NORMAL > LOW — a status/error widget overrides anything and auto-removes
 - **Power-save**: Active → Dimmed → Screensaver → Sleep → Off (all timeouts configurable & flash-persisted)
 - **Gestures**: hold a Home key to Reboot / ProgMode / Display-off / Pause with a countdown overlay (release = abort)
@@ -75,7 +75,7 @@ errorWidget->addAction(DisplayEnabled); // → Shown immediately!
 
 ### Planned Features (Phase 3)
 - [ ] **Config strategy — decision needed**: keep display config **on-device only** (menu + flash, as today) or **also expose it as ETS parameters**. Trade-off: ETS = central, reproducible, part of the backed-up project — but adds parameter bloat + an ETS↔flash sync/precedence path; local-only = simpler, no ETS round-trip, but the config isn't captured in the ETS project. → decide before adding more config surface.
-- [ ] **Global system notifications (auto-toast)**: surface system events — IP up/down, SD card in/out, BCU connect/lost, … — **automatically from anywhere** (screensaver, widget rotation or menu) as a high-priority overlay, using the existing `StatusWidget` priority + `AutoRemove` path (the architecture already supports this). Configurable dwell: **auto-dismiss (default)** vs. must-acknowledge. Default is auto, so there is never a backlog of un-clicked messages to buffer/hold back. Wires Network/SD/BCU status-change hooks to a notification widget (reuses the menu's Toast / info-overlay style).
+- [x] **Global system notifications (toast)**: any module posts a short message with `toast()`; bottom toast, banner over the menu, error card until OK or LEFT — see [Toast](#toast)
 - [ ] **Screenshot Gesture**: RIGHT-hold → dump the 128×64 framebuffer as a 1-bit BMP to the SD-card root (reusable `dumpFramebufferBmp(Print&)` encoder)
 - [x] **Web Virtual Display**: mirror/stream the OLED framebuffer to a web UI and drive the buttons virtually; refresh defaults to 1 s, can be disabled or switched to uncapped loop-time-gated live mode with a received frame-rate indicator. While the panel sleeps, the preview clears without transferring stale framebuffer pixels, BMP export is unavailable, and streaming resumes when it wakes.
 - [ ] **Widget Taxonomy**: structured widget categories + a cleaner selection/rotation UX (see `doc/widget-taxonomy-concept.md`)
@@ -140,6 +140,8 @@ This library features a sophisticated widget management system, centralized butt
     - [Button Priority System](#button-priority-system)
   - [Gesture System (Hold-to-Confirm)](#gesture-system-hold-to-confirm)
   - [On-Device Settings (Persistence)](#on-device-settings-persistence)
+  - [Shared drawing helpers](#shared-drawing-helpers)
+  - [Toast](#toast)
   - [Installation](#installation)
   - [Dependencies](#dependencies)
   - [Example Code](#example-code)
@@ -855,7 +857,7 @@ On top of the raw button system, the DeviceDisplay adds a **hold-to-confirm gest
 
 ### Components
 - **`GestureEngine`** (`src/Gesture/GestureEngine.h`) — a non-blocking hold-to-confirm state machine. Tracks exactly **one** active gesture at a time; driven by `tick(now)`.
-- **`WidgetGestureOverlay`** (`src/Widgets/GestureOverlay.h`) — a **CRITICAL** status widget that renders the confirm overlay (per-action title/label, horizontal countdown bar, remaining seconds) on top of whatever is on screen, reading phase/fraction/seconds/action from the engine.
+- **`WidgetGestureOverlay`** (`src/Widgets/GestureOverlay.h`) — a **CRITICAL** status widget that renders the confirm overlay (action verb in the header, target in large text, countdown bar, remaining time "N.N s", hint line) on top of whatever is on screen, reading phase/fraction/action from the engine.
 - **`GestureKeyMap` / `HomeKeyAction`** — the Home-screen button→action mapping, configurable in the DD menu ("Home-Tasten") and persisted in the display-settings flash blob.
 
 ### State machine
@@ -886,10 +888,10 @@ The engine performs no side effects itself — DeviceDisplay binds callbacks, ea
 `setOnProgToggle` (→ `knx.toggleProgMode()`), `setOnReboot` (→ `openknx.common.restart()`), `setOnPauseToggle` (rotation pause), `setOnDisplayOff` (→ display off).
 
 ### Overlay modes
-- **Hold** — button-held confirm; subtext *"weiter halten · loslassen = Abbruch · N s"*.
-- **Auto** — menu-triggered auto-countdown; subtext *"◀ Abbrechen · N s"*.
+- **Hold** — button-held confirm; hint *"Release = cancel"*.
+- **Auto** — menu-triggered auto-countdown; hint *"< Cancel"*.
 
-The confirm label reflects current state: ProgMode → *AKTIVIEREN* / *DEAKTIVIEREN*, Pause → *PAUSIEREN* / *FORTSETZEN* (set via `setProgActive()` / `setPauseActive()` when the overlay is shown).
+The header verb reflects current state: ProgMode → *Activate* / *Exit*, Pause → *Pause* / *Resume* (set via `setProgActive()` / `setPauseActive()` when the overlay is shown). Reboot → *Restart Device*, DisplayOff → *Turn off Display*, Screenshot → *Capture Screen*.
 
 ---
 
@@ -904,12 +906,12 @@ Display settings are edited in the on-screen menu and **persisted in the DeviceD
 | `dimMin` | auto-dim after N min; 0 = aus | 15 |
 | `dimLevelIdx` | dim level: 0 = nie, 1..9 → 10..90 % (effective dim = min(level, brightness)) | 3 (30 %) |
 | `invert` | invert display | false |
-| `autoPaging` | auto-page the widget rotation | true |
+| `autoPaging` | auto-page the widget rotation; off = every widget comes in on its main page, sub-pages are paged by hand | false |
 | `screenSaverType` | `ScreenSaverType` value 0..10; 5 and 8 (removed Matrix, Rain) load as 6. Menu, web and `ddc` use the list position 0..8 | 6 (Matrix) |
 | `screenSaverMin` | screensaver after N min; 0 = aus | 30 |
 | `sleepMin` | **display off** after N min; 0 = nie | 60 |
 | `keyMap[4]` | Home-key actions {UP, DOWN, LEFT, RIGHT} | Pause / Reboot / DisplayOff / Screenshot |
-| `iconMenu` | render the root menu as an icon grid | false |
+| `iconMenu` | render the root menu as an icon carousel | true |
 | `screenshotInvert` | screenshot paper look (swap BMP palette) | false |
 | `displayRotate` | 180° rotation (Anzeige → Display; **manual save**) | false |
 | `preChargeIdx` | pre-charge preset 0..5 (Anzeige → Display; **manual save**) | 5 |
@@ -930,6 +932,7 @@ The **Display → Panel** submenu exposes hardware tuning — 180° rotation, pr
 | `ddc config set <id> <value>` | set one setting by id (ids match `ddc config`) |
 | `ddc i` | widget manager + menu settings + memory |
 | `ddc l` | list all widgets |
+| `ddc toast <i\|o\|w\|e> <text>` | show a toast (info, ok, warn, error); `\|` starts the second line |
 
 The whole `ddc` console is part of the developer console and is compiled in only with **`-D OPENKNX_CONSOLE_DEV`** (the switch OGM-Common and the other modules use for their developer and test commands). **`-D DDC_CONSOLE_DISABLE`** strips it again where flash is short (e.g. RP2040 with 2 MB) while the other developer commands stay. Without it the menu and settings persistence keep working.
 
@@ -941,6 +944,22 @@ Each widget's rotation config is stored by a stable **FNV-1a name hash** (fixed-
 - `durationDs` — display duration in **deciseconds** (100 ms units)
 
 Deserialization is defensive (loops the fixed `WIDGET_SETTINGS_MAX`, clamps the stored count), so a short/stale/corrupt flash blob can never overrun the array.
+
+---
+
+## Shared drawing helpers
+`src/DisplayUi.h` (`OpenKNX::Ui`) draws what every widget shares, so all widgets keep one grid: `header()` (title, page dots, dotted line at y10), `row()` (label, value from a fixed column, in the 10 px rhythm from y14), `rowIcon()` (9x9 icon, text, right-aligned value), `statusCard()` (symbol, badge, word in size 2, one detail line), `bigValue()`, `badge()`, `bar()`, `keyHint()`, `graph()` and the text helpers `printCut()` / `printCentred()`. A widget calls `Ui::begin()` first. The 9x9 row icons, 13x13 badges and 32x32 menu icons are in `src/Icons/UiIcons.h`. Rules, fixed values and a widget template: [`doc/design`](doc/design/).
+
+## Toast
+Short messages over the current view, drawn into the frame the panel gets, so no widget buffer changes:
+```cpp
+openknxDisplayModule.toast(ToastLevel::Error, OpenKNX::Ui::kRowLan, "LAN down", "Check cable");
+openknxDisplayModule.retractToast("LAN down"); // the cause is gone
+openknxDisplayModule.toast(ToastLevel::Ok, OpenKNX::Ui::kRowLan, "LAN up", "10.0.0.39 DHCP");
+```
+- **Forms**: Info and Ok at the bottom for 2.5 s, Warn for 5 s, as a banner while the menu is open; Error as a card that stays until OK or LEFT.
+- **Queue**: one shown, three waiting, errors first; the same first line within 10 s counts up ("x3"); a retracted message that returns within 60 s counts on and does not wake the panel again.
+- **Waking**: Warn and Error wake a dimmed panel, the screensaver or sleep; ProgMode, an open editor and a panel switched off by the gesture let them wait. Which level shows where: [`doc/design/toast.md`](doc/design/toast.md).
 
 ---
 
@@ -1278,7 +1297,6 @@ void setupMenu(MenuWidget* menu)
 | **WidgetProgMode** | Priority | Programming mode indicator (blinks LED) |
 | **WidgetClock** | Default | Digital/Analog clock display |
 | **WidgetQRCode** | Default | QR code generator |
-| **WidgetSysInfoLite** | Default | System information display |
 | **WidgetBootLogo** | StatusWidget | Boot splash screen |
 | **WidgetMatrixClassic** | Screensaver | Matrix rain effect, listed as "Matrix" |
 | **WidgetStarfield** | Screensaver | Starfield animation |
@@ -1551,7 +1569,7 @@ Menus are **not fixed at compile time**. They can be:
 
 ---
 
-A root item can bring its own icon for the icon menu: set `MenuOption::icon` to a 13x13 bitmap in PROGMEM. Without it the menu picks the glyph from the label.
+The icon menu (carousel) takes each root item's 32x32 icon by its label from `src/Icons/UiIcons.h` (`OpenKNX::Ui::menuIcon32`); a label without an entry is drawn without an icon. `MenuOption::icon` is kept for compatibility and not drawn.
 
 ### Menu Item Types
 
