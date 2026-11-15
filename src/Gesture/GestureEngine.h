@@ -153,13 +153,6 @@ class GestureEngine
      */
     float getBarFraction() const;
 
-    /**
-     * @brief Remaining whole seconds shown next to the bar.
-     * @return ceil(barFraction * 3), clamped so a running bar never shows 0 (min 1).
-     *         Returns 0 only once the bar is fully empty (Firing/Done/Aborted/Idle).
-     */
-    uint8_t getRemainingSeconds() const;
-
     // --- Key map (GEST-03) ------------------------------------------------------------
 
     /** @brief Replace the Home-screen key map. */

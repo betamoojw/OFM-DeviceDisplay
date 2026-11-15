@@ -41,14 +41,9 @@ class WidgetProgMode : public Widget
     std::string _name = "ProgMode"; // Widget name
     unsigned long _lastBlinkTime;   // Last blink time
     bool _showProgMode;             // Current blink state
+    bool _redraw = false;           // Frame requested by start() / resume()
+    uint16_t _drawnPa = 0;          // Individual address in the last frame
 
-    void draw(); // Draws the program mode content on the display
-
-    /** state of partial drawing:
-     * 0    = no drawing / done,
-     * 1..n = drawing step
-     */
-    uint8_t _drawStep = 0;    
-
+    void draw(); // Draws the program mode frame in one pass
 };
 #endif // DEVICE_DISPLAY_MODULE

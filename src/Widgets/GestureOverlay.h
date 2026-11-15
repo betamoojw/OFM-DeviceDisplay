@@ -3,15 +3,15 @@
     /**
      * @file        GestureOverlay.h
      * @brief       Hold-/Auto-confirm countdown overlay widget
-     * @details     WidgetGestureOverlay renders the gesture confirm overlay from the mockup:
-     *              a per-action title/label, a horizontal countdown bar (fraction * width) and
-     *              a subtext with the remaining seconds. It reads phase/fraction/seconds/action
-     *              from a GestureEngine* (setEngine()) and is drawn partially via _drawStep,
-     *              analogous to WidgetProgMode. It is a CRITICAL StatusWidget that wants button
-     *              input so it can overlay the menu/home while a gesture is running.
+     * @details     WidgetGestureOverlay renders the gesture confirm overlay: the action verb as
+     *              header, the target in size 2, a countdown bar (fraction), the remaining time
+     *              "N.N s" and a hint line. It reads phase/fraction/action from a GestureEngine*
+     *              (setEngine()) and draws one frame per visible change. It is a CRITICAL
+     *              StatusWidget that wants button input so it can overlay the menu/home while a
+     *              gesture is running.
      *
-     *              Two modes (setMode): Hold (button held, subtext "weiter halten · loslassen =
-     *              Abbruch · N s") and Auto (menu-triggered, subtext "◀ Abbrechen · N s").
+     *              Two modes (setMode): Hold (button held, hint "Release = cancel") and Auto
+     *              (menu-triggered, hint "< Cancel").
      *              setOnConfirmed()/setOnCancelled() are invoked once when the gesture reaches
      *              Firing/Done (confirmed) or Aborted (cancelled) respectively.
      *
@@ -29,7 +29,7 @@
 /**
  * @brief Overlay display mode.
  * @note  Hold - hold-to-confirm (button held; releasing before the end aborts).
- *        Auto - menu-triggered auto countdown (LEFT aborts); subtext "◀ Cancel".
+ *        Auto - menu-triggered auto countdown (LEFT aborts); hint "< Cancel".
  */
 enum class GestureOverlayMode : uint8_t
 {
@@ -68,7 +68,7 @@ class WidgetGestureOverlay : public Widget
     inline const std::string getName() const override { return _name; }
     inline void setName(const std::string &name) override { _name = name; }
 
-    /** @brief Bind the gesture engine the overlay reads phase/fraction/seconds/action from. */
+    /** @brief Bind the gesture engine the overlay reads phase/fraction/action from. */
     inline void setEngine(GestureEngine *engine) { _engine = engine; }
 
     /** @brief Select the overlay mode (Hold or Auto). Changes the subtext hint. */
@@ -85,14 +85,14 @@ class WidgetGestureOverlay : public Widget
 
     /**
      * @brief Tell the overlay whether KNX prog mode is CURRENTLY active, so the ProgMode
-     *        confirm label reads "DEAKTIVIEREN" (holding will turn it off) instead of the
-     *        default "ACTIVATE". Set by DeviceDisplay when the overlay is shown.
+     *        header reads "Exit" (holding will turn it off) instead of "Activate".
+     *        Set by DeviceDisplay when the overlay is shown.
      */
     inline void setProgActive(bool active) { _progActive = active; }
 
     /**
-     * @brief Tell the overlay whether the rotation is CURRENTLY paused, so the Pause confirm
-     *        label reads "RESUME" (holding will resume) instead of "PAUSE".
+     * @brief Tell the overlay whether the rotation is CURRENTLY paused, so the Pause header
+     *        reads "Resume" (holding will resume) instead of "Pause".
      */
     inline void setPauseActive(bool active) { _pauseActive = active; }
 
@@ -103,33 +103,27 @@ class WidgetGestureOverlay : public Widget
     WidgetState _state;                   // Widget state
     std::string _name = "GestureOverlay"; // Widget name
 
-    GestureEngine *_engine = nullptr;                    // Source of phase/fraction/seconds/action
-    GestureOverlayMode _mode = GestureOverlayMode::Hold; // Hold vs. Auto subtext
+    GestureEngine *_engine = nullptr;                    // Source of phase/fraction/action
+    GestureOverlayMode _mode = GestureOverlayMode::Hold; // Hold vs. Auto hint line
 
     std::function<void()> _onConfirmed; // Fired once on confirm
     std::function<void()> _onCancelled; // Fired once on cancel
 
-    // Last-drawn snapshot so we only repaint on change (partial draw trigger).
+    // Last-drawn snapshot so we only repaint on change; _lastBarCols = 0xFF forces a frame.
     GesturePhase _lastPhase = GesturePhase::Idle;
     uint8_t _lastBarCols = 0xFF; // last drawn bar fill width in pixels
-    uint8_t _lastSeconds = 0xFF; // last drawn remaining seconds
+    uint8_t _lastTenths = 0xFF;  // last drawn remaining time in 0.1 s
     GestureAction _lastAction = GestureAction::None;
 
     bool _confirmedFired = false; // ensure the confirm callback runs at most once
     bool _cancelledFired = false; // ensure the cancel callback runs at most once
-    bool _progActive = false;     // KNX prog mode state at show time (AKTIVIEREN/BEENDEN)
-    bool _pauseActive = false;    // rotation pause state at show time (PAUSIEREN/FORTSETZEN)
+    bool _progActive = false;     // KNX prog mode state at show time (Activate/Exit)
+    bool _pauseActive = false;    // rotation pause state at show time (Pause/Resume)
 
-    void draw(); // Draws the overlay content on the display
+    void draw(uint16_t fill); // Draws the snapshot in one pass; fill = bar fill in permille
 
-    // Per-action strings (from the mockup gTitle()/gLabel()).
+    // Per-action strings: header verb and size-2 target.
     const char *titleForAction(GestureAction action) const;
     const char *labelForAction(GestureAction action) const;
-
-    /** state of partial drawing:
-     * 0    = no drawing / done,
-     * 1..n = drawing step
-     */
-    uint8_t _drawStep = 0;
 };
 #endif // DEVICE_DISPLAY_MODULE

@@ -56,10 +56,8 @@ class WidgetOTA : public Widget
     unsigned long _lastBlinkTime = 0;
     bool _blinkOn = true;
     uint8_t _percent = 0;
+    bool _redraw = false; // frame pending (start, resume, new percent)
 
-    void draw();
-
-    /** partial-draw state: 0 = done, 1..n = drawing step */
-    uint8_t _drawStep = 0;
+    void draw(); // Draws the frame in one pass
 };
 #endif // DEVICE_DISPLAY_MODULE

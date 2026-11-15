@@ -16,7 +16,6 @@
  **/
 
     #include "GestureEngine.h"
-    #include <cmath> // ceilf
 
 // --- Hold-to-confirm control (GEST-02) ------------------------------------------------
 
@@ -170,18 +169,6 @@ float GestureEngine::getBarFraction() const
         default:
             return 0.0f;
     }
-}
-
-uint8_t GestureEngine::getRemainingSeconds() const
-{
-    const float frac = getBarFraction();
-    if (frac <= 0.0f) return 0; // empty bar: no countdown left
-
-    // ceil(frac * 3); a still-running bar never shows 0 (mockup: Math.max(1, ...)).
-    uint8_t sec = static_cast<uint8_t>(ceilf(frac * 3.0f));
-    if (sec < 1) sec = 1;
-    if (sec > 3) sec = 3;
-    return sec;
 }
 
 // --- Key map (GEST-03) ----------------------------------------------------------------

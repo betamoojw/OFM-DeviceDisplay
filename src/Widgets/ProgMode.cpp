@@ -1,6 +1,8 @@
 #ifdef DEVICE_DISPLAY_MODULE
     #include "ProgMode.h"
+    #include "../DisplayUi.h"
     #include "OpenKNX.h"
+    #include <stdio.h>
 
 WidgetProgMode::WidgetProgMode(uint32_t displayTime, WidgetFlags action)
     : _display(nullptr), _action(action), _displayTime(displayTime), _state(WidgetState::STOPPED),
@@ -26,7 +28,7 @@ void WidgetProgMode::start()
     logDebugP("start...");
     _state = WidgetState::RUNNING;
     _lastBlinkTime = millis();
-    _drawStep = 1; // Start initial draw in next loop
+    _redraw = true; // initial frame in the next loop
 }
 
 void WidgetProgMode::stop()
@@ -51,97 +53,51 @@ void WidgetProgMode::resume()
     logDebugP("resume...");
     _state = WidgetState::RUNNING;
     _lastBlinkTime = millis();
-    _drawStep = 1; // Start redraw in next loop
+    _redraw = true; // redraw in the next loop
 }
 
 void WidgetProgMode::loop()
 {
     if (!_display || _state != WidgetState::RUNNING) return;
 
-    unsigned long currentTime = millis();
-
-    // TODO cleanup split implementation...
-
-    // Check if it's time to toggle the blink state
+    const unsigned long currentTime = millis();
     if (currentTime - _lastBlinkTime >= PROG_MODE_BLINK_DELAY)
     {
         _lastBlinkTime = currentTime;
-        _showProgMode = !_showProgMode; // Toggle the blink state
-        _drawStep = 1;
+        _showProgMode = !_showProgMode;
+        _redraw = true;
     }
-    else if (_drawStep == 0)
-    {
-        // nothing to draw
-        return;
-    }
-
-    draw(); // Update the display
+    if (_redraw || openknx.info.individualAddress() != _drawnPa) draw();
 }
 
 void WidgetProgMode::draw()
 {
-    if (!_display) return;
+    _redraw = false;
+    _drawnPa = openknx.info.individualAddress();
 
-    // Partial drawing, step by step in loop()-calls
-    switch (_drawStep++)
+    Adafruit_SSD1306 &d = *_display->display;
+    OpenKNX::Ui::begin(d);
+    d.clearDisplay();
+    OpenKNX::Ui::header(d, "Prog-Mode", 1, 0);
+
+    // Blink phase on: white box 4 px around the text, text in BLACK. x is the printCentred() position.
+    static const char kWord[] = "ProgMode";
+    if (_showProgMode)
     {
-        case 1:
-            _display->display->clearDisplay(); // Clear the display
-            _display->display->setTextColor(SSD1306_WHITE);
-            break;
-        case 2:
-            // Header: "OpenKNX" (always visible)
-            _display->display->setTextSize(1);
-            _display->display->setCursor(0, 0);
-            _display->display->print("   www.OpenKNX.de   ");
-            break;
-        case 3:
-            // "ProgMode!" message (blinking) - big, per mock (renderProgActive: "ProgMode aktiv")
-            if (_showProgMode)
-            {
-                _display->display->setTextColor(SSD1306_BLACK, SSD1306_WHITE);
-            }
-            else
-            {
-                _display->display->setTextColor(SSD1306_WHITE);
-            }
-
-            _display->display->setTextSize(2);
-            _display->display->setCursor(0, 16);
-            _display->display->print(" ProgMode!");
-            break;
-        case 4:
-            // PA row (mock: "PA  15.15.0"). Individual address from openknx.info.
-            _display->display->setTextColor(SSD1306_WHITE);
-            _display->display->setTextWrap(false);
-            _display->display->setTextSize(1);
-            _display->display->setCursor(0, 36);
-            _display->display->print(" PA ");
-            _display->display->print(openknx.info.humanIndividualAddress().c_str());
-            break;
-        case 5:
-            // Programming hint (mock renderProgActive: ".pasub" line).
-            _display->display->setTextColor(SSD1306_WHITE);
-            _display->display->setTextWrap(false);
-            _display->display->setTextSize(1);
-            _display->display->setCursor(0, 46);
-            _display->display->print(" Ready to program");
-            break;
-        case 6:
-            // Footer hint (ASCII; the SSD1306 CP437 font has no umlaut).
-            _display->display->setTextColor(SSD1306_WHITE);
-            _display->display->setTextWrap(false);
-            _display->display->setTextSize(1);
-            _display->display->setCursor(0, 52);
-            _display->display->print(" Hold OK = exit");
-            break;
-        case 7:
-            // Update the display
-            _display->displayBuff();
-            // fall trough
-        default:
-            _drawStep = 0; // completed
-            break;
+        constexpr int16_t textW = (sizeof(kWord) - 1) * OpenKNX::Ui::CharW * 2;
+        const int16_t x = static_cast<int16_t>((d.width() - textW + 2) / 2);
+        d.fillRect(static_cast<int16_t>(x - 4), 13, textW + 6, 18, WHITE);
+        d.setTextColor(BLACK);
     }
+    OpenKNX::Ui::printCentred(d, 14, kWord, 2);
+    d.setTextColor(WHITE);
+
+    char pa[14]; // "PA 15.15.255"
+    snprintf(pa, sizeof(pa), "PA %u.%u.%u", static_cast<unsigned>(_drawnPa >> 12), static_cast<unsigned>((_drawnPa >> 8) & 0x0F),
+             static_cast<unsigned>(_drawnPa & 0xFF));
+    OpenKNX::Ui::printCentred(d, 34, pa);
+    OpenKNX::Ui::printCentred(d, 44, "Ready to program");
+    OpenKNX::Ui::printCentred(d, 54, "Hold OK = exit");
+    _display->displayBuff();
 }
 #endif // DEVICE_DISPLAY_MODULE

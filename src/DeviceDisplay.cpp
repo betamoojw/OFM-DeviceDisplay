@@ -1193,10 +1193,10 @@ void DeviceDisplay::updateGestureOverlay()
     if (shouldShow && !isShown)
     {
         // In prog mode WidgetProgMode (also CRITICAL) would hide the overlay -> suppress it for
-        // the overlay's lifetime, and hand it the prog state so its label reads correctly.
+        // the overlay's lifetime, and hand it the prog state for the header verb.
         const bool progActive = knx.progMode();
         _gestureOverlay->setProgActive(progActive);
-        _gestureOverlay->setPauseActive(_widgetManager->isRotationPaused()); // Pause->FORTSETZEN
+        _gestureOverlay->setPauseActive(_widgetManager->isRotationPaused()); // Pause -> Resume
         if (progActive && _progModeWidget)
             _progModeWidget->removeAction(WidgetFlags::DisplayEnabled);
         w->addAction(DisplayEnabled);

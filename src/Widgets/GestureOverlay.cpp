@@ -2,10 +2,9 @@
     /**
      * @file        GestureOverlay.cpp
      * @brief       Hold-/Auto-confirm countdown overlay widget
-     * @details     Renders the gesture confirm overlay analogous to WidgetProgMode: partial
-     *              _drawStep drawing, per-action title/label, a horizontal countdown bar
-     *              (fraction * width) and a subtext with the remaining seconds. Phase, bar
-     *              fraction, seconds and action are read from the bound GestureEngine.
+     * @details     One frame per visible change: action verb as header, target in size 2,
+     *              countdown bar, remaining time "N.N s" and a hint line. Phase, bar fraction
+     *              and action are read from the bound GestureEngine.
      *              Confirmed/cancelled callbacks fire exactly once per gesture.
      * @version     0.0.1
      * @date        2026-07-09
@@ -13,7 +12,9 @@
      *              Licensed under GNU GPL v3.0
      **/
     #include "GestureOverlay.h"
+    #include "../DisplayUi.h"
     #include "OpenKNX.h"
+    #include <stdio.h>
 
 WidgetGestureOverlay::WidgetGestureOverlay(uint32_t displayTime, WidgetFlags action)
     : _display(nullptr), _action(action), _displayTime(displayTime), _state(WidgetState::STOPPED)
@@ -44,11 +45,10 @@ void WidgetGestureOverlay::start()
     // paints on the first loop() and re-arms the confirm/cancel callbacks.
     _lastPhase = GesturePhase::Idle;
     _lastBarCols = 0xFF;
-    _lastSeconds = 0xFF;
+    _lastTenths = 0xFF;
     _lastAction = GestureAction::None;
     _confirmedFired = false;
     _cancelledFired = false;
-    _drawStep = 1;
 }
 
 void WidgetGestureOverlay::stop()
@@ -72,7 +72,7 @@ void WidgetGestureOverlay::resume()
 {
     logDebugP("resume...");
     _state = WidgetState::RUNNING;
-    _drawStep = 1;
+    _lastBarCols = 0xFF; // repaint in the next loop
 }
 
 void WidgetGestureOverlay::loop()
@@ -83,7 +83,6 @@ void WidgetGestureOverlay::loop()
     const GesturePhase phase = _engine->getPhase();
     const GestureAction action = _engine->getCurrentAction();
     const float frac = _engine->getBarFraction();
-    const uint8_t seconds = _engine->getRemainingSeconds();
 
     // Fire the one-shot outcome callbacks. Firing/Done -> confirmed, Aborted -> cancelled.
     if ((phase == GesturePhase::Firing || phase == GesturePhase::Done) && !_confirmedFired)
@@ -97,47 +96,36 @@ void WidgetGestureOverlay::loop()
         if (_onCancelled) _onCancelled();
     }
 
-    // Bar fill in pixels, so we can detect visible changes and only repaint on change.
-    const uint8_t width = _display->GetDisplayWidth();
-    uint8_t barCols = static_cast<uint8_t>(frac * static_cast<float>(width) + 0.5f);
-    if (barCols > width) barCols = width;
+    // The bar fills toward the action (full when it fires); empty after an abort. Repaint only when
+    // the fill column as Ui::bar() draws it or the remaining time (rounded up to 0.1 s) changes.
+    const bool ended = phase == GesturePhase::Aborted || phase == GesturePhase::Idle;
+    const uint16_t fill = ended ? 0 : static_cast<uint16_t>(1000 - static_cast<uint16_t>(frac * 1000.0f + 0.5f));
+    const uint8_t barCols = static_cast<uint8_t>(static_cast<uint32_t>(_display->display->width() - 2 * OpenKNX::Ui::BarPad) * fill / 1000);
+    const uint8_t tenths = static_cast<uint8_t>((static_cast<uint16_t>(frac * GESTURE_BAR_MS + 0.5f) + 99) / 100);
 
-    const bool changed = (phase != _lastPhase) || (action != _lastAction) ||
-                         (barCols != _lastBarCols) || (seconds != _lastSeconds);
-
-    if (changed)
-    {
-        _lastPhase = phase;
-        _lastAction = action;
-        _lastBarCols = barCols;
-        _lastSeconds = seconds;
-        _drawStep = 1;
-    }
-    else if (_drawStep == 0)
-    {
-        // nothing changed and no partial draw in progress
-        return;
-    }
-
-    draw();
+    if (phase == _lastPhase && action == _lastAction && barCols == _lastBarCols && tenths == _lastTenths) return;
+    _lastPhase = phase;
+    _lastAction = action;
+    _lastBarCols = barCols;
+    _lastTenths = tenths;
+    draw(fill);
 }
 
 const char *WidgetGestureOverlay::titleForAction(GestureAction action) const
 {
-    // Mirrors the mockup gTitle(): pause -> "Auto paging", reboot -> "System",
-    // prog -> "Prog-Mode".
+    // Header: what holding does; Exit/Resume when the state is already on.
     switch (action)
     {
         case GestureAction::Pause:
-            return "Auto paging";
+            return _pauseActive ? "Resume" : "Pause";
         case GestureAction::Reboot:
-            return "System";
+            return "Restart";
         case GestureAction::ProgMode:
-            return "Prog-Mode";
+            return _progActive ? "Exit" : "Activate";
         case GestureAction::DisplayOff:
-            return "Display";
+            return "Turn off";
         case GestureAction::Screenshot:
-            return "Screenshot";
+            return "Capture";
         default:
             return "Action";
     }
@@ -145,98 +133,38 @@ const char *WidgetGestureOverlay::titleForAction(GestureAction action) const
 
 const char *WidgetGestureOverlay::labelForAction(GestureAction action) const
 {
-    // Mirrors the mockup gLabel(false) (the running-countdown label). The "done"/checkmark
-    // variants depend on runtime toggle state (progOn/homePaused) which the engine does not
-    // expose here, so the overlay shows the imperative call-to-action label.
+    // Size-2 line: what the action works on (10 characters fit).
     switch (action)
     {
         case GestureAction::Pause:
-            // Reflect the current pause state — holding while paused RESUMES the rotation.
-            return _pauseActive ? "RESUME" : "PAUSE";
+            return "Rotation";
         case GestureAction::Reboot:
-            return "RESTART";
+            return "Device";
         case GestureAction::ProgMode:
-            // Holding while active ENDS prog mode.
-            // Prog mode active -> "EXIT" (leave it), inactive -> "ACTIVATE".
-            return _progActive ? "EXIT" : "ACTIVATE";
+            return "ProgMode";
         case GestureAction::DisplayOff:
-            return "OFF";
+            return "Display";
         case GestureAction::Screenshot:
-            return "CAPTURE";
+            return "Screen";
         default:
             return "";
     }
 }
 
-void WidgetGestureOverlay::draw()
+void WidgetGestureOverlay::draw(uint16_t fill)
 {
-    if (!_display) return;
+    Adafruit_SSD1306 &d = *_display->display;
+    OpenKNX::Ui::begin(d);
+    d.clearDisplay();
+    OpenKNX::Ui::header(d, titleForAction(_lastAction), 1, 0);
+    OpenKNX::Ui::printCentred(d, 14, labelForAction(_lastAction), 2);
+    OpenKNX::Ui::bar(d, 0, 32, d.width(), fill);
 
-    const uint8_t width = _display->GetDisplayWidth();
-
-    // Geometry for the horizontal countdown bar (matches the mockup .pbar block).
-    const int16_t barX = 0;
-    const int16_t barY = 40;
-    const int16_t barH = 10;
-    const int16_t barW = static_cast<int16_t>(width);
-    const int16_t fillW = static_cast<int16_t>(_lastBarCols);
-
-    // Partial drawing, step by step in loop()-calls.
-    switch (_drawStep++)
-    {
-        case 1:
-            _display->display->clearDisplay();
-            _display->display->setTextColor(SSD1306_WHITE);
-            break;
-        case 2:
-            // Title row (per action): gTitle()
-            _display->display->setTextSize(1);
-            _display->display->setCursor(0, 0);
-            _display->display->print(titleForAction(_lastAction));
-            break;
-        case 3:
-            // Big action label (call-to-action): gLabel()
-            _display->display->setTextColor(SSD1306_WHITE);
-            _display->display->setTextSize(2);
-            _display->display->setCursor(0, 16);
-            _display->display->print(labelForAction(_lastAction));
-            break;
-        case 4:
-            // Countdown bar: outline + fill (fraction * width)
-            _display->display->drawRect(barX, barY, barW, barH, SSD1306_WHITE);
-            if (fillW > 0)
-            {
-                _display->display->fillRect(barX, barY, fillW, barH, SSD1306_WHITE);
-            }
-            break;
-        case 5:
-        {
-            // Subtext with remaining seconds (21 characters fit). Hold -> "release = cancel",
-            // Auto -> "◀ Cancel" (the arrow is drawn as "<" for the SSD1306 font).
-            _display->display->setTextColor(SSD1306_WHITE);
-            _display->display->setTextWrap(false);
-            _display->display->setTextSize(1);
-            _display->display->setCursor(0, 54);
-            if (_mode == GestureOverlayMode::Hold)
-            {
-                // Mock renderProg(hold) shortened so the seconds stay on the 128 px line.
-                _display->display->print("release = cancel "); // + "N s": 20 characters (N is 1..3)
-            }
-            else
-            {
-                // Auto branch: "< Cancel - <N> s" (leading "<" stands in for the mock arrow).
-                _display->display->print("< Cancel - ");
-            }
-            _display->display->print(static_cast<int>(_lastSeconds));
-            _display->display->print(" s");
-            break;
-        }
-        case 6:
-            _display->displayBuff();
-            // fall through
-        default:
-            _drawStep = 0; // completed
-            break;
-    }
+    char left[8]; // "3.0 s"
+    snprintf(left, sizeof(left), "%u.%u s", static_cast<unsigned>(_lastTenths / 10), static_cast<unsigned>(_lastTenths % 10));
+    OpenKNX::Ui::printCentred(d, 44, left);
+    // Hold: releasing early aborts; Auto (menu-triggered): LEFT aborts.
+    OpenKNX::Ui::printCentred(d, 54, _mode == GestureOverlayMode::Hold ? "Release = cancel" : "< Cancel");
+    _display->displayBuff();
 }
 #endif // DEVICE_DISPLAY_MODULE

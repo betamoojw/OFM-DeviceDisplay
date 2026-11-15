@@ -8,8 +8,9 @@
      *              Licensed under GNU GPL v3.0
      */
     #include "OTAUpdate.h"
+    #include "../DisplayUi.h"
     #include "OpenKNX.h"
-    #include <cstring> // strlen for centered percent text
+    #include <stdio.h>
 
 WidgetOTA::WidgetOTA(uint32_t displayTime, WidgetFlags action)
     : _display(nullptr), _action(action), _displayTime(displayTime), _state(WidgetState::STOPPED)
@@ -34,7 +35,7 @@ void WidgetOTA::start()
     logDebugP("start...");
     _state = WidgetState::RUNNING;
     _lastBlinkTime = millis();
-    _drawStep = 1; // initial draw next loop
+    _redraw = true; // initial frame next loop
 }
 
 void WidgetOTA::stop()
@@ -59,7 +60,7 @@ void WidgetOTA::resume()
     logDebugP("resume...");
     _state = WidgetState::RUNNING;
     _lastBlinkTime = millis();
-    _drawStep = 1; // redraw next loop
+    _redraw = true; // redraw next loop
 }
 
 // Fed by DeviceDisplay each poll; only redraw when the value actually moves.
@@ -68,84 +69,40 @@ void WidgetOTA::setProgress(uint8_t percent)
     if (percent > 100) percent = 100;
     if (percent == _percent) return;
     _percent = percent;
-    if (_state == WidgetState::RUNNING) _drawStep = 1;
+    if (_state == WidgetState::RUNNING) _redraw = true;
 }
 
 void WidgetOTA::loop()
 {
     if (!_display || _state != WidgetState::RUNNING) return;
 
-    unsigned long currentTime = millis();
-
-    // Toggle the "alive" dot so a stalled percent still looks like work in progress.
+    // Toggle the "alive" square so a stalled percent still looks like work in progress.
+    const unsigned long currentTime = millis();
     if (currentTime - _lastBlinkTime >= OTA_BLINK_DELAY)
     {
         _lastBlinkTime = currentTime;
         _blinkOn = !_blinkOn;
-        _drawStep = 1;
+        _redraw = true;
     }
-    else if (_drawStep == 0)
-    {
-        return; // nothing pending
-    }
-
-    draw();
+    if (_redraw) draw();
 }
 
 void WidgetOTA::draw()
 {
-    if (!_display) return;
+    _redraw = false;
 
-    // Partial drawing, one step per loop()-call.
-    switch (_drawStep++)
-    {
-        case 1:
-            _display->display->clearDisplay();
-            _display->display->setTextColor(SSD1306_WHITE);
-            break;
-        case 2:
-            // Header + activity dot (top-right, blinks).
-            _display->display->setTextWrap(false);
-            _display->display->setTextSize(1);
-            _display->display->setCursor(0, 0);
-            _display->display->print("  www.OpenKNX.de");
-            if (_blinkOn)
-                _display->display->fillRect(120, 0, 6, 6, SSD1306_WHITE);
-            break;
-        case 3:
-            // Title (big).
-            _display->display->setTextSize(2);
-            _display->display->setCursor(4, 16);
-            _display->display->print("OTA UPDATE");
-            break;
-        case 4:
-        {
-            // Percent (big, centered).
-            const int16_t sw = (int16_t)_display->GetDisplayWidth();
-            char buf[8];
-            snprintf(buf, sizeof(buf), "%u %%", (unsigned)_percent);
-            const int16_t w = (int16_t)(strlen(buf) * 12); // size-2 glyph = 12 px
-            _display->display->setTextSize(2);
-            _display->display->setCursor((sw - w) / 2, 34);
-            _display->display->print(buf);
-            break;
-        }
-        case 5:
-        {
-            // Progress bar.
-            const int16_t sw = (int16_t)_display->GetDisplayWidth();
-            const int16_t barX = 14, barW = sw - 28;
-            _display->display->drawRect(barX, 56, barW, 7, SSD1306_WHITE);
-            if (_percent > 0)
-                _display->display->fillRect(barX, 56, (int16_t)((uint32_t)barW * _percent / 100), 7, SSD1306_WHITE);
-            break;
-        }
-        case 6:
-            _display->displayBuff();
-            // fall through
-        default:
-            _drawStep = 0; // completed
-            break;
-    }
+    Adafruit_SSD1306 &d = *_display->display;
+    OpenKNX::Ui::begin(d);
+    d.clearDisplay();
+    OpenKNX::Ui::header(d, "OTA Update", 1, 0);
+    // Activity square in the top-right corner: the manager overlay draws only on a DefaultWidget.
+    if (_blinkOn) d.fillRect(120, 0, 6, 6, WHITE);
+
+    char buf[6]; // "100 %"
+    snprintf(buf, sizeof(buf), "%u %%", static_cast<unsigned>(_percent));
+    OpenKNX::Ui::printCentred(d, 14, buf, 2);
+    OpenKNX::Ui::bar(d, 0, 32, d.width(), static_cast<uint16_t>(_percent * 10));
+    OpenKNX::Ui::printCentred(d, 54, "Keep power on");
+    _display->displayBuff();
 }
 #endif // DEVICE_DISPLAY_MODULE
