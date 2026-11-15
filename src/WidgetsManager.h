@@ -308,6 +308,7 @@ class WidgetsManager // Manages the widget queue and state machine
     void rotateWidgetToEnd(Widget* widget);
     bool shouldRotateWidgets() const;
     bool isIdleTimeoutReached(uint32_t currentTime) const;
+    bool displayTimeOver(uint32_t now) const;
     bool hasOnlyDefaultWidgets() const;
 
     // Keep _defaultOrder consistent with the DefaultWidgets currently in the queue: append

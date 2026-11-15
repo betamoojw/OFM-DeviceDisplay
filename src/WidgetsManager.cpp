@@ -553,7 +553,7 @@ void WidgetsManager::updateState(uint32_t currentTime)
     {
         bool showDefault = isIdleTimeoutReached(currentTime) ||
                            !_currentWidget ||
-                           currentTime >= _currentTime ||
+                           displayTimeOver(currentTime) ||
                            hasOnlyDefaultWidgets();
 
         if (showDefault)
@@ -599,7 +599,7 @@ void WidgetsManager::transitionTo(WidgetManagerState newState)
  */
 void WidgetsManager::handleStartupState(uint32_t currentTime)
 {
-    if (_currentWidget && currentTime < _currentTime)
+    if (_currentWidget && !displayTimeOver(currentTime))
     {
         if (_currentWidget->getState() == WidgetState::RUNNING &&
             !(_currentWidget->getAction() & Background))
@@ -748,7 +748,7 @@ void WidgetsManager::handleDefaultState(uint32_t currentTime)
     }
     // Case 3: Display time expired. While paused there is no time-based switch - the
     // current DefaultWidget stays put until the user manually switches or resumes.
-    else if (!_rotationPaused && currentTime >= _currentTime)
+    else if (!_rotationPaused && displayTimeOver(currentTime))
     {
         shouldSwitch = true;
         advanceRotation = true;
@@ -829,7 +829,7 @@ void WidgetsManager::handleCurrentWidget(uint32_t currentTime)
     const WidgetState state = _currentWidget->getState();
 
     // AutoRemove widget expired
-    if ((flags & AutoRemove) && currentTime >= _currentTime)
+    if ((flags & AutoRemove) && displayTimeOver(currentTime))
     {
         logDebugP("AutoRemove widget expired: %s", _currentWidget->getName().c_str());
         removeWidgetFromQueue(_currentWidget);
@@ -2076,6 +2076,19 @@ float WidgetsManager::getRotationProgress() const
 bool WidgetsManager::isIdleTimeoutReached(uint32_t currentTime) const
 {
     return (currentTime - _lastInteractionTime >= _idleTimeout);
+}
+
+/**
+ * @brief The current widget's display time (_currentTime) is over; never for UINT32_MAX.
+ * @details Measured from its start: holds across the millis() wrap and after a long sleep (up to two display times
+ *          late near multiples of 49.7 days); a start up to one display time after now (set later in this pass) is not over.
+ */
+bool WidgetsManager::displayTimeOver(uint32_t now) const
+{
+    if (_currentTime == UINT32_MAX) return false;
+    const uint32_t total = _currentTime - _currentWidgetStartTime;
+    const uint32_t elapsed = now - _currentWidgetStartTime;
+    return elapsed >= total && elapsed <= UINT32_MAX - total;
 }
 
 /**
