@@ -57,6 +57,7 @@ class WidgetDoom : public Widget
     static constexpr uint32_t FRAME_MS = 55;            // ~18 fps cap (throttle between frames)
     int16_t _renderCol = 0;                             // next column to render for the current frame
     bool _frameDone = true;                             // true -> start a fresh frame (step + snapshot) on the next loop
+    bool _clearFrame = true;                            // the next frame starts on a cleared buffer (after title/banner)
     uint32_t _lastFrameStart = 0;                       // millis() of the current frame start (fps cap)
     RayCam _cam = {};                                   // bot camera frozen for the frame being drawn
 

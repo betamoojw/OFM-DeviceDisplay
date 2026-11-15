@@ -79,6 +79,7 @@ void WidgetDoom::start()
     _tgtY = static_cast<int>(_py);
     pickNextCell(); // choose an initial corridor to walk into
     _frameDone = true;
+    _clearFrame = true;
     _renderCol = 0;
     _lastFrameStart = millis();
     _phase = Phase::Title; // Easter egg: open with the zooming DOOM title
@@ -127,6 +128,7 @@ void WidgetDoom::loop()
             _phase = Phase::Play;
             _phaseStart = now;
             _frameDone = true;
+            _clearFrame = true;
             _renderCol = 0;
             _lastFrameStart = now;
         }
@@ -146,6 +148,7 @@ void WidgetDoom::loop()
             _phase = Phase::Play;
             _phaseStart = now;
             _frameDone = true;
+            _clearFrame = true;
             _renderCol = 0;
             _lastFrameStart = now;
         }
@@ -168,15 +171,21 @@ void WidgetDoom::loop()
         _lastFrameStart = now;
         step();
         rayCamAt(_cam, _px, _py, _dir);
-        _display->display->clearDisplay();
+        if (_clearFrame) _display->display->clearDisplay(); // the title or banner is not part of the view
+        _clearFrame = false;
         _renderCol = 0;
         _frameDone = false;
     }
 
     // Render a bounded chunk of columns this loop against the frozen snapshot (non-blocking DRAW).
     int16_t done = 0;
+    // Each column is cleared right before it is drawn, so between passes the buffer holds new columns on the left and
+    // the last frame on the right (not in the first frame after title or banner): a toast may compose it at any pass.
     for (; _renderCol < W && done < RENDER_COLS_PER_LOOP; ++_renderCol, ++done)
+    {
+        _display->display->drawFastVLine(_renderCol, 0, H, BLACK);
         rayColumn(_display->display, MAP, _cam, _renderCol, W, H);
+    }
 
     if (_renderCol >= W) // frame complete -> flush (the flush itself is also chunked/async)
     {
