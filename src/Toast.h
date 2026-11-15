@@ -32,8 +32,9 @@ class DisplayToast
         Ota,      // firmware update
         Prog,     // KNX programming mode
         Off,      // panel switched off by the user (gesture): no toast wakes it
-        Dark,     // screensaver, sleep, off by timeout
+        Dark,     // sleep, off by timeout
         Busy,     // menu editor, About, gesture or other status widget, boot logo
+        Saver,    // screensaver
         Dimmed,   // dimmed panel
         Menu,     // menu open
         Rotation  // widget rotation
@@ -73,7 +74,7 @@ class DisplayToast
 
     /**
      * @brief Advances the head of the queue for the current scene and sets the form to draw.
-     * @return true when the caller has to wake the panel and call update() again (Warn/Error on a dimmed or dark panel)
+     * @return true when the caller has to wake the panel and call update() again (Warn/Error on a dimmed or dark panel or over the screensaver)
      */
     bool update(Scene scene, uint32_t now);
     /** @brief Draws the current form into d (the frame for the panel). */

@@ -931,8 +931,8 @@ DisplayToast::Scene DeviceDisplay::toastScene() const
     // Power state before the widget state: the manager keeps its last state while the panel is dark.
     if (_widgetManager->isForcedOff()) return DisplayToast::Scene::Off;
     const PowerSaveMode mode = _widgetManager->getPowerSaveMode();
-    if (mode == PowerSaveMode::Screensaver || mode == PowerSaveMode::Sleep || mode == PowerSaveMode::Off)
-        return DisplayToast::Scene::Dark;
+    if (mode == PowerSaveMode::Sleep || mode == PowerSaveMode::Off) return DisplayToast::Scene::Dark;
+    if (mode == PowerSaveMode::Screensaver) return DisplayToast::Scene::Saver;
     const WidgetManagerState state = _widgetManager->getState();
     const bool gestureShown = _gestureOverlay && (_gestureOverlay->getAction() & DisplayEnabled);
     if (_aboutActive || gestureShown || (_menuWidget && _menuWidget->editorActive()) ||

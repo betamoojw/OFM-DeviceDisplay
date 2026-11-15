@@ -133,7 +133,8 @@ namespace
             case S::Off: return warn ? Act::Wait : Act::Drop;
             case S::Busy: return Act::Wait;
             case S::Dark: return warn ? Act::Wake : Act::Drop;
-            case S::Dimmed: return warn ? Act::Wake : (level == ToastLevel::Ok ? Act::Show : Act::Drop);
+            case S::Saver: // Info and Ok over the screensaver or the dimmed panel, without waking it
+            case S::Dimmed: return warn ? Act::Wake : Act::Show;
             default: return Act::Show;
         }
     }
@@ -364,7 +365,8 @@ bool DisplayToast::update(Scene scene, uint32_t now)
         if (a == Act::Wake)
         {
             if (_shownAt == 0 && !e.seen) return true; // wake once, on the first appearance; a seen one shown again does not
-            a = scene == Scene::Dimmed ? Act::Show : Act::Drop;
+            // a seen card stays hidden behind the screensaver and shows once it has ended
+            a = (scene == Scene::Dimmed || (scene == Scene::Saver && !error)) ? Act::Show : Act::Drop;
         }
 
         Form f = Form::None;
