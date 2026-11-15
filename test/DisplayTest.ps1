@@ -228,18 +228,20 @@ $Tests = @(
         $after = ([regex]::Matches($d.Cmd('sdc ls', 2.5), '\.bmp')).Count
         @{ Ok = ($after -gt $before); Detail = "$before -> $after Dateien" } } }
 
-    @{ Name = 'KONAMI stellt Anzeige-Defaults wieder her'; Run = { param($d)
-        # Sequenz ist UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT SELECT SELECT -- ZWEI SELECT
-        # (DeviceDisplay.cpp::matchKonami). End-to-end: Wert verbiegen, Sequenz, Wert muss zurueck.
+    @{ Name = 'KONAMI oeffnet About, Werte bleiben'; Run = { param($d)
+        # Sequence UP UP DOWN DOWN LEFT RIGHT LEFT RIGHT SELECT SELECT (DeviceDisplay.cpp::matchKonami). It resets
+        # nothing (only Display -> Reset in the menu does), it opens About.
         $d.Home()
-        [void]$d.Cmd('ddc config set brightness 3', 1.0)
-        $bent = ($d.Cmd('ddc config', 2.0) -match 'brightness\s*:\s*3')
+        # Compare only the "<id> : <value>" lines; timestamps and other log lines would differ.
+        $vals = { param($t) ([regex]::Matches($t, '\b([a-z_]+)\s+:\s+(\d+)') | ForEach-Object { $_.Groups[1].Value + '=' + $_.Groups[2].Value }) -join ';' }
+        $before = & $vals $d.Cmd('ddc config', 2.0)
         'up','up','down','down','left','right','left','right','ok','ok' | ForEach-Object { $d.Key($_) }
         Start-Sleep -Seconds 1
-        $restored = ($d.Cmd('ddc config', 2.0) -match 'brightness\s*:\s*9')
-        @{ Ok = ($bent -and $restored)
-           Detail = if (-not $bent) { 'Wert liess sich nicht verstellen' }
-                    elseif ($restored) { 'brightness 3 -> 9 (Default)' } else { 'nicht zurueckgesetzt' } } } }
+        $about = ($d.Cmd('ddc i', 2.5) -match 'Current Widget\s*:\s*About')
+        $same = ($before -ne '') -and ((& $vals $d.Cmd('ddc config', 2.0)) -eq $before)
+        $d.Home()
+        @{ Ok = ($about -and $same)
+           Detail = if (-not $about) { 'About nicht aktiv' } elseif (-not $same) { 'Werte veraendert' } else { 'About aktiv, Werte unveraendert' } } } }
 
     # ── SD / Datei-Browser ────────────────────────────────────────────────────
     @{ Section = 'SD-Karte'; Name = 'SD ist gemountet'; Run = { param($d)
