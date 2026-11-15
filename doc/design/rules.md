@@ -32,7 +32,7 @@ Alle Vorgaben aus dem Handbuch an einem Ort. Die Kürzel (L1, T4, …) sind dies
 ## Icons
 
 - **I1 9×9 Zeilensymbol**: Steht vor einer Textzeile bei x0, y = Zeile − 1. Der Text beginnt bei x12. Strich 1 px, Füllung nur für Fehler und Warnung.
-- **I2 32×32 Menübild**: Das Icon-Karussell zeichnet jeden Hauptmenüeintrag als 32×32-Bild bei x48 y13, die Nachbarn halb so groß links und rechts. Das Bild kommt aus `src/Icons/UiIcons.h`, gesucht nach dem Namen des Eintrags (`OpenKNX::Ui::menuIcon32`); ein neues Modul trägt sein Bild dort ein, sonst bleibt die Stelle leer. `MenuOption::icon` wird nicht gezeichnet.
+- **I2 32×32 Menübild**: Das Icon-Karussell zeichnet jeden Hauptmenüeintrag als 32×32-Bild bei x48 y13, die Nachbarn halb so groß links und rechts. Das Bild kommt aus `src/Icons/UiIcons.h`, gesucht nach dem Namen des Eintrags (`OpenKNX::Ui::menuIcon32`); ein neues Modul trägt sein Bild dort ein, sonst bleibt die Stelle leer.
 - **I3 17er Plakette**: Gefüllter Kreis r8, darin ein 13×13-Symbol in Schwarz (Notify-Muster). Sie zeigt den Zustand eines ganzen Widgets. Ein Ring r10 in Schwarz trennt sie von der Zeichnung darunter.
 - **I4 Bedeutung bleibt gleich**: Haken heißt erfolgreich, Ausrufezeichen heißt Fehler, Uhr heißt wartet, Schloss heißt gesperrt. Ein Symbol hat in allen Modulen dieselbe Bedeutung.
 
