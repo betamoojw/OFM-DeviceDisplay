@@ -451,13 +451,13 @@ namespace DefaultMenus
                 o.label = "Auto paging";
                 o.type = MenuConfig::MenuElementType::Checkbox;
                 o.key = "auto_paging";
-                o.defaultValue = MenuValue(true);
+                o.defaultValue = MenuValue(false);
             });
             addRow(sub, [](MenuOption& o) {
                 o.label = "Icon menu";
                 o.type = MenuConfig::MenuElementType::Checkbox;
-                o.key = "icon_menu"; // root icon grid vs text list
-                o.defaultValue = MenuValue(false);
+                o.key = "icon_menu"; // root icon carousel vs text list
+                o.defaultValue = MenuValue(true);
             });
             addRow(sub, [](MenuOption& o) {
                 o.label = "Screensaver";

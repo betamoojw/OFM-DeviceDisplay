@@ -209,7 +209,7 @@ class MenuWidget : public Widget
 
     // Icon main menu (user-toggleable): the root as a carousel of 32x32 icons instead of a text list.
     // LEFT/UP = previous, RIGHT/DOWN = next (no wrap), OK enters. Submenus keep the text list.
-    bool _iconMenu = false;
+    bool _iconMenu = true;
     bool iconGridActive() const { return _iconMenu && _menuStack.empty(); }
 
     // Common: return to Normal mode and force a redraw.

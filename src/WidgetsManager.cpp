@@ -136,10 +136,10 @@ void WidgetsManager::loop()
 }
 
 /**
- * @brief Draw the shared "rotation paused" glyph (top-right) over the current
- *        DefaultWidget view. No-op unless paused and showing a rotation widget
- *        (not the menu, prog-exclusive or screensaver views). Draws directly into the
- *        Adafruit buffer; the caller flushes right after.
+ * @brief Draw the manager corner (x116..127, y0..8) over the current DefaultWidget view:
+ *        blinking "BM" while a busmonitor runs, else pause bars or the play triangle while
+ *        widgets rotate. Not drawn over the menu, prog-exclusive or screensaver views.
+ *        Draws into the Adafruit buffer; the caller flushes right after.
  */
 void WidgetsManager::drawManagerOverlay()
 {
@@ -165,8 +165,9 @@ void WidgetsManager::drawManagerOverlay()
         d->print("BM");
         d->setTextColor(WHITE);
     }
-    else if (_autoPagingEnabled)
+    else if (_rotationPaused || shouldRotateWidgets())
     {
+        // Rotation state, independent of auto paging (sub-pages): pause bars or play triangle.
         if (_rotationPaused)
         {
             d->fillRect(bx + 2, 1, 2, 7, WHITE);
@@ -1370,6 +1371,10 @@ void WidgetsManager::switchToWidget(Widget* widget, uint32_t currentTime, const 
     // This is the base for getRotationProgress() and resets it to 0 on each switch.
     _currentWidgetStartTime = currentTime;
 
+    // Without auto paging a rotating widget always comes in on its main page; sub-pages are manual.
+    if (!_autoPagingEnabled && (widget->getAction() & DefaultWidget) && widget->getPageCount() > 1)
+        widget->setPage(0);
+
     if (_currentWidget->getState() != WidgetState::RUNNING)
     {
         _currentWidget->start();
@@ -1665,9 +1670,9 @@ void WidgetsManager::prevWidgetManual()
 /**
  * @brief Enable/disable automatic paging of multi-page DefaultWidgets
  * @details When enabled, a multi-page current DefaultWidget advances its pages evenly
- *          over its display duration (see updateAutoPaging). Disabling it leaves the
- *          current widget on whatever page it is on; the next full duration then simply
- *          keeps page 0 (the auto advance no longer runs). Does not touch the rotation
+ *          over its display duration (see updateAutoPaging). Disabled, every DefaultWidget
+ *          comes in on page 0 and a manual page flip restarts its full duration; the widget
+ *          shown at the moment of the switch keeps its page. Does not touch the rotation
  *          deadline (_currentTime), so the per-widget duration is unchanged either way.
  * @param enabled true to auto-page multi-page widgets, false to hold a single page
  */
@@ -1744,10 +1749,9 @@ static inline size_t wrapPage(size_t page, int dir, size_t count)
 /**
  * @brief Manually flip the current widget's page by one, with wrap
  * @details Moves the current (multi-page) widget's page by one (up = -1, down = +1),
- *          wrapping around, and rescales _currentWidgetStartTime so the chosen page keeps
- *          its full per-page slice before the next automatic advance/rotation (mirrors the
- *          mock resetting homeStart to now - page*slice). No-op for single-page current
- *          widgets. Manual paging works even while auto-paging is off.
+ *          wrapping around. With auto paging the chosen page keeps its full per-page slice
+ *          (start = now - page*slice); without it the widget gets its full display time again.
+ *          No-op for single-page current widgets.
  */
 void WidgetsManager::pageUp()
 {
@@ -1765,7 +1769,8 @@ void WidgetsManager::pageUp()
         const uint32_t now = millis();
         const uint32_t total = _currentTime - _currentWidgetStartTime;
         const uint32_t slice = total / static_cast<uint32_t>(pageCount);
-        _currentWidgetStartTime = now - static_cast<uint32_t>(newPage) * slice;
+        // Auto paging: the page keeps its slice. Manual only: a flipped page gets the full duration.
+        _currentWidgetStartTime = _autoPagingEnabled ? now - static_cast<uint32_t>(newPage) * slice : now;
         _currentTime = _currentWidgetStartTime + total;
     }
     logDebugP("Manual page up: %s -> page %u", current->getName().c_str(), (unsigned)newPage);
@@ -1786,7 +1791,8 @@ void WidgetsManager::pageDown()
         const uint32_t now = millis();
         const uint32_t total = _currentTime - _currentWidgetStartTime;
         const uint32_t slice = total / static_cast<uint32_t>(pageCount);
-        _currentWidgetStartTime = now - static_cast<uint32_t>(newPage) * slice;
+        // Auto paging: the page keeps its slice. Manual only: a flipped page gets the full duration.
+        _currentWidgetStartTime = _autoPagingEnabled ? now - static_cast<uint32_t>(newPage) * slice : now;
         _currentTime = _currentWidgetStartTime + total;
     }
     logDebugP("Manual page down: %s -> page %u", current->getName().c_str(), (unsigned)newPage);

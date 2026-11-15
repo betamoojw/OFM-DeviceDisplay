@@ -214,8 +214,8 @@ class WidgetsManager // Manages the widget queue and state machine
     // that has to be visible wherever the user happens to be looking.
     void setBusMonActive(bool active) { _busMonActive = active; }
 
-    // Manual page flipping of the current widget. Wraps around and rescales the rotation/paging
-    // timer so the chosen page gets its full per-page slice. No-op for single-page/non-rotating.
+    // Manual page flipping of the current widget. Wraps around; with auto paging the page keeps its
+    // per-page slice, without it the widget gets its full display time again. No-op for single-page.
     void pageUp();
     void pageDown();
 
@@ -261,7 +261,7 @@ class WidgetsManager // Manages the widget queue and state machine
     // that shuffles _widgetQueue; kept in sync lazily with the queue (see syncDefaultOrder).
     std::vector<Widget*> _defaultOrder;
 
-    bool _autoPagingEnabled = true;
+    bool _autoPagingEnabled = false;
     bool _busMonActive = false;
 
     // Index (into _defaultOrder) of the currently grabbed widget in reorder mode, -1 if none.

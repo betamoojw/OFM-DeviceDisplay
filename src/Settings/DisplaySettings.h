@@ -62,8 +62,8 @@ struct DisplaySettings
     // "Invert" check (fx:'inv') -> default false
     bool invert = false;
 
-    // "Auto paging" check (fx:'autopage') -> default true
-    bool autoPaging = true;
+    // "Auto paging" check (fx:'autopage') -> default false: rotation shows main pages only
+    bool autoPaging = false;
 
     // "Screensaver": ScreenSaverType value (0..10, 5 and 8 unused) -> default 6 = Matrix (classic).
     uint8_t screenSaverType = 6;
@@ -90,8 +90,8 @@ struct DisplaySettings
         HomeKeyAction::Screenshot  // RIGHT (Right-hold -> screenshot to SD)
     };
 
-    // "Icon menu": render the root menu as an icon grid instead of a text list -> default false.
-    bool iconMenu = false;
+    // "Icon menu": render the root menu as an icon carousel instead of a text list -> default true.
+    bool iconMenu = true;
 
     // "Screenshot" -> "Invert": false = lit pixels white (OLED look, default), true = paper look.
     bool screenshotInvert = false;

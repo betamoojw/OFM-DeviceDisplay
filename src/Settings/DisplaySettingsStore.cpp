@@ -71,7 +71,7 @@ void DisplaySettingsStore::loadDefaults()
     _settings.dimMin = 15;         // Dim after 15 min (0 = off)
     _settings.dimLevelIdx = 3;     // Dim level 30 % (0 = never)
     _settings.invert = false;      // Invert check (fx:'inv')
-    _settings.autoPaging = true;   // Auto paging (fx:'autopage')
+    _settings.autoPaging = false;  // Auto paging off: rotation shows main pages, sub-pages are manual
     _settings.screenSaverType = 6; // ScreenSaverType -> 6 = Matrix (classic)
     _settings.screenSaverMin = 30; // Saver after 30 min (0 = off)
     _settings.sleepMin = 60;       // Sleep after 60 min (0 = never)
@@ -85,7 +85,7 @@ void DisplaySettingsStore::loadDefaults()
     _settings.keyMap[HOME_KEY_LEFT] = HomeKeyAction::DisplayOff;
     _settings.keyMap[HOME_KEY_RIGHT] = HomeKeyAction::Screenshot;
 
-    _settings.iconMenu = false;         // root menu shows a text list by default (toggle in Display)
+    _settings.iconMenu = true;          // root menu shows the icon carousel by default (toggle in Display)
     _settings.screenshotInvert = false; // OLED look by default (lit pixels white)
 
     // No widget records: every widget keeps the values it was registered with.
