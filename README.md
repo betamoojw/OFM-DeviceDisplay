@@ -1569,7 +1569,7 @@ Menus are **not fixed at compile time**. They can be:
 
 ---
 
-The icon menu (carousel) takes each root item's 32x32 icon by its label from `src/Icons/UiIcons.h` (`OpenKNX::Ui::menuIcon32`); a label without an entry is drawn without an icon. `MenuOption::icon` is kept for compatibility and not drawn.
+The icon menu (carousel) takes each root item's 32x32 icon by its label from `src/Icons/UiIcons.h` (`OpenKNX::Ui::menuIcon32`); a label without an entry is drawn without an icon.
 
 ### Menu Item Types
 

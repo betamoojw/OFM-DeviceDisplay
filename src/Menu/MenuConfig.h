@@ -100,7 +100,6 @@ class MenuConfig
         uint8_t ip[4] = {0, 0, 0, 0};               // octet carrier for IpEdit items; TextInput: ip[0] = max length (0 = editor cap)
         bool devOnly = false;                       // item only visible when developer mode is active
         int sortOrder = 0;                          // stable root ordering (0 = registration order)
-        const uint8_t* icon = nullptr;              // optional 13x13 bitmap; not drawn (the carousel takes its 32x32 icon by label)
 
         // Richer editors for Dropdown items (else the item cycles in place on select).
         bool radioList = false;                     // open a full-screen single-select picker
@@ -154,7 +153,7 @@ class MenuConfig
 //
 // Build rows directly in their final vector storage — never as stack locals.
 //
-// A MenuOption is ~312 bytes (4x std::string, 4x std::function, 2x std::vector, an
+// A MenuOption is ~312 bytes (4x std::string, 5x std::function, 2x std::vector, an
 // optional<pair<string, MenuValue>>). A builder holding a dozen of them as locals, and copying
 // them a second time through an initializer list (`sub = {a, b, c}` puts a full copy of every row
 // on the stack), does not fit anywhere: Core0 on RP2040/RP2350 has 8 KiB of stack in total
