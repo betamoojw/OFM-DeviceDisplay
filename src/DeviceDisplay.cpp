@@ -943,7 +943,7 @@ DisplayToast::Scene DeviceDisplay::toastScene() const
  */
 void DeviceDisplay::toastTick()
 {
-    if (!_widgetManager) return;
+    if (!_widgetManager || _toast.idle()) return;
     const uint32_t now = millis();
     if (_toast.update(toastScene(), now))
     {

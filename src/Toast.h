@@ -82,6 +82,8 @@ class DisplayToast
     uint32_t frameKey(uint32_t now) const;
 
     Form form() const { return _form; }
+    /** @brief Nothing queued and nothing remembered: update() would change nothing. */
+    bool idle() const { return _count == 0 && _gone.line1[0] == '\0'; }
     /** @brief Notes a key PRESS (bit = key mask): OK or LEFT pressed while the card is shown arms its release. */
     void pressKey(uint8_t bit, bool okOrLeft) { _keys = static_cast<uint8_t>(_form == Form::Card && okOrLeft ? _keys | bit : _keys & ~bit); }
     /** @brief Takes the armed state of a released key. */
