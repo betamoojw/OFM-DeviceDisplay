@@ -225,7 +225,7 @@ void DeviceDisplay::applyAllSettingsToRuntime()
     // Screensaver family selection (replaces the default seeded in initializeWidgets()).
     setScreenSaverType(static_cast<ScreenSaverType>(_settingsStore.screenSaverType()));
 
-    // Root-menu style (text list vs icon grid).
+    // Root-menu style (text list vs icon carousel).
     if (_menuWidget) _menuWidget->setIconMenu(_settingsStore.iconMenu());
 
     // "Display" hardware tuning from the store; also (re)seed the live "pending" mirror so the menu
@@ -595,7 +595,7 @@ void DeviceDisplay::wireMenuCallbacks()
         logDebugP("autoPaging -> %u", val.getBool() ? 1u : 0u);
     });
 
-    // Icon-Menue: toggle the root icon grid; persist + apply live to the menu widget.
+    // Icon-Menue: toggle the root icon carousel; persist + apply live to the menu widget.
     _menuWidget->registerOnValueChanged("icon_menu", [this](const MenuConfig::MenuOption&, const MenuValue& val) {
         _settingsStore.setIconMenu(val.getBool());
         _menuWidget->setIconMenu(val.getBool());
@@ -1071,14 +1071,20 @@ void DeviceDisplay::handleButtonEvent(const ButtonEvent& event)
     if (releaseOfArmedGesture)
         _widgetManager->userInteraction();
 
-    // HOLDING LEFT closes the whole menu from anywhere; a short LEFT still navigates.
-    if ((event.action == ButtonAction::LONG_PRESS || event.action == ButtonAction::VERY_LONG_PRESS) &&
-        event.type == ButtonType::LEFT && _menuWidget &&
+    // HOLDING LEFT closes the whole menu from anywhere; a short LEFT still navigates. HOLDING UP/DOWN in the
+    // text editor jumps to the next/previous character group; elsewhere it stays a short press.
+    if ((event.action == ButtonAction::LONG_PRESS || event.action == ButtonAction::VERY_LONG_PRESS) && _menuWidget &&
         _widgetManager->getActiveButtonWidget() == static_cast<Widget*>(_menuWidget))
     {
-        logInfoP("Menu: LEFT long-press -> exit menu");
-        _menuWidget->externalClose(); // LONG_PRESS is the release of this press, no further event follows
-        return;
+        if (event.type == ButtonType::LEFT)
+        {
+            logInfoP("Menu: LEFT long-press -> exit menu");
+            _menuWidget->externalClose(); // LONG_PRESS is the release of this press, no further event follows
+            return;
+        }
+        if ((event.type == ButtonType::UP || event.type == ButtonType::DOWN) &&
+            _menuWidget->externalTextGroupJump(event.type == ButtonType::UP))
+            return;
     }
 
     // Short press: forward a single synthetic PRESS to the active widget.

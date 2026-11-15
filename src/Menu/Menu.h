@@ -46,6 +46,8 @@ class MenuWidget : public Widget
     void externalClose() { closeMenu(); }
     // True while an editor (text, number, IP, picker, slider, reorder, confirm) owns the keys.
     bool editorActive() const { return _mode != MenuMode::Normal; }
+    // Held UP/DOWN in the text editor: first character of the next/previous group; false outside the text editor.
+    bool externalTextGroupJump(bool next);
 
     // Logger prefix
     const std::string logPrefix() { return "MenuWidget"; }
@@ -65,7 +67,7 @@ class MenuWidget : public Widget
     // (not just the current view - eager submenus in _menuStack would otherwise stay stale).
     void rebuild() { buildMenuFromRegistry(); }
 
-    // Root renders as an icon grid (true) or text list (false); toggled live from the Display menu.
+    // Root renders as an icon carousel (true) or text list (false); toggled live from the Display menu.
     void setIconMenu(bool on)
     {
         if (_iconMenu != on)
@@ -100,8 +102,6 @@ class MenuWidget : public Widget
 
   private:
     // UI Constants
-    static constexpr uint8_t ITEM_HEIGHT = 10;
-    static constexpr uint8_t ITEM_MARGIN = 2;
     static constexpr uint16_t BUTTON_CHECK_INTERVAL = 250;
     static constexpr uint16_t REDRAW_INTERVAL = 1000;
 
@@ -145,11 +145,13 @@ class MenuWidget : public Widget
     void drawIpEditor();
 
     // Char-scroll text editor state + sub-mode (TextInput items). UP/DOWN cycles the char at the
-    // cursor, LEFT/RIGHT moves it (LEFT at 0 = back), RIGHT past the end grows up to TEXT_EDIT_MAX.
+    // cursor, LEFT/RIGHT moves it (LEFT at 0 = back), RIGHT past the end grows up to textMax().
     std::string _textEdit;                       // working copy of the string being edited
     uint8_t _textCursor = 0;                     // active character index
     size_t _textEditIndex = 0;                   // index into _currentMenu of the item
-    static constexpr uint8_t TEXT_EDIT_MAX = 15; // max editable length
+    static constexpr uint8_t TEXT_EDIT_MAX = 15; // global cap of the editable length
+    uint8_t textMax() const;                     // item limit (MenuOption::ip[0]) capped at TEXT_EDIT_MAX
+    const char* textAllowed() const;             // characters the item accepts (dropdownOptions[0]), nullptr = all
     void enterTextEdit(size_t itemIndex);        // copy item text -> _textEdit, _mode = TextEdit
     void commitTextEdit();                       // write back (trailing spaces trimmed) + onValueChanged
     void cancelTextEdit();                       // discard, leave
@@ -205,15 +207,10 @@ class MenuWidget : public Widget
     bool handleSliderButton(const ButtonEvent& event);
     void drawSlider();
 
-    // Icon main menu (user-toggleable): render the root categories as an icon grid instead of a
-    // text list. Arrows move within the grid (2D), OK enters. Submenus keep the normal text list.
-    static constexpr uint8_t ICON_COLS = 3;
-    static constexpr uint8_t ICON_ROWS = 2;
+    // Icon main menu (user-toggleable): the root as a carousel of 32x32 icons instead of a text list.
+    // LEFT/UP = previous, RIGHT/DOWN = next (no wrap), OK enters. Submenus keep the text list.
     bool _iconMenu = false;
     bool iconGridActive() const { return _iconMenu && _menuStack.empty(); }
-    void gridMove(int dCol, int dRow);                                                     // move the cursor within the icon grid
-    void drawIconMenu();                                                                   // render the root as an icon grid
-    void drawCategoryIcon(const std::string& label, int16_t cx, int16_t cy, uint16_t col); // ~18x18 GFX glyph by category
 
     // Common: return to Normal mode and force a redraw.
     void leaveEditor();
@@ -243,9 +240,8 @@ class MenuWidget : public Widget
 
     void clearDisplay();
     void drawMenu();
-
-    // Graphic on/off toggle switch (rounded pill + knob) for Checkbox/ProgToggle rows.
-    void drawToggleSwitch(int16_t x, int16_t y, int16_t w, int16_t h, bool on, uint16_t fg, uint16_t bg);
+    // Root carousel: current icon, half-size neighbours, name and the entry's info line.
+    void drawCarousel(size_t count, size_t selVis, size_t prev, size_t next);
 
     // Visibility filter — combines visibleIf with the devOnly/_devMode flag.
     bool isItemVisible(const MenuConfig::MenuOption& item) const;
@@ -258,10 +254,6 @@ class MenuWidget : public Widget
     // True when `item` is an IP row currently locked by DHCP (net_dhcp present and true). Such rows
     // stay visible but render "auto" and must NOT enter the octet editor on select.
     bool isDhcpLocked(const MenuConfig::MenuOption& item) const;
-
-    // `text` truncated to fit `maxWidth` px at the current font, with an ASCII "..." when it
-    // overflows; returns `text` unchanged when it already fits.
-    std::string truncateToWidth(const std::string& text, int16_t maxWidth) const;
 
     // Display properties
     i2cDisplay* _display = nullptr;

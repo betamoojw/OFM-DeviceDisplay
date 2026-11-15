@@ -6,8 +6,74 @@
     #include "OpenKNX.h"
 
     #include "../DeviceDisplay.h"
+    #include "../DisplayUi.h"
+    #include "../Icons/UiIcons.h"
     #include "../Widget.h"
     #include "../WidgetsManager.h"
+
+namespace
+{
+    constexpr int16_t ListTop = 12, ListPitch = 10, ListRows = 5; // menu list: rows from y12, 10 px, 5 visible
+    constexpr int16_t CharW = 6;
+
+    // Text editor character set: groups a-z, A-Z, 0-9, then space and the printable ASCII symbols.
+    constexpr char kCharset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~";
+    constexpr int16_t kCharsetLen = sizeof(kCharset) - 1;
+    static_assert(kCharsetLen == 95, "kCharset holds every printable ASCII character once");
+    constexpr uint8_t kGroupStart[4] = {0, 26, 52, 62};
+    constexpr char kGroupName[4][4] = {"abc", "ABC", "123", "#+="};
+
+    /** @brief List scrollbar: dots at x127 every second row y12..60, thumb x126..127 placed by the first visible row. */
+    void drawScrollbar(Adafruit_SSD1306* d, size_t first, size_t count)
+    {
+        for (int16_t py = ListTop; py < ListTop + ListRows * ListPitch; py += 2)
+            d->drawPixel(127, py, WHITE);
+        const int16_t track = ListRows * ListPitch;
+        int16_t thumb = static_cast<int16_t>(track * ListRows / static_cast<int32_t>(count));
+        if (thumb < 4) thumb = 4;
+        const int16_t ty = static_cast<int16_t>(ListTop + static_cast<int32_t>(track - thumb) * static_cast<int32_t>(first) / static_cast<int32_t>(count - ListRows));
+        d->fillRect(126, ty, 2, thumb, WHITE);
+    }
+
+    /** @brief Draws a 32x32 icon at half size with its top-left at (x0,y0); a pixel is lit if any of its 2x2 source pixels is, so 1-px lines survive. */
+    void drawHalfIcon(Adafruit_SSD1306* d, int16_t x0, int16_t y0, const uint8_t* icon32)
+    {
+        if (!icon32) return;
+        for (int16_t y = 0; y < 16; y++)
+            for (int16_t x = 0; x < 16; x++)
+            {
+                const uint8_t rows = pgm_read_byte(&icon32[y * 8 + (x >> 2)]) | pgm_read_byte(&icon32[y * 8 + 4 + (x >> 2)]);
+                if (rows & (0xC0 >> ((x & 3) << 1)))
+                    d->drawPixel(static_cast<int16_t>(x0 + x), static_cast<int16_t>(y0 + y), WHITE);
+            }
+    }
+
+    /** @brief Index of c in kCharset, -1 if it is not in the set. */
+    int16_t charIndex(char c)
+    {
+        const char* p = c ? strchr(kCharset, c) : nullptr;
+        return p ? static_cast<int16_t>(p - kCharset) : -1;
+    }
+
+    /** @brief Group (0..3) of a kCharset index. */
+    uint8_t charGroup(int16_t idx)
+    {
+        uint8_t g = 0;
+        while (g < 3 && idx >= kGroupStart[g + 1]) g++;
+        return g;
+    }
+
+    /** @brief Next kCharset index from idx in direction dir (+1/-1, wrapping) that allowed accepts (nullptr = all). */
+    int16_t charStep(int16_t idx, int8_t dir, const char* allowed)
+    {
+        for (int16_t n = 0; n < kCharsetLen; n++)
+        {
+            idx = static_cast<int16_t>((idx + dir + kCharsetLen) % kCharsetLen);
+            if (!allowed || strchr(allowed, kCharset[idx])) return idx;
+        }
+        return idx;
+    }
+} // namespace
 
 MenuWidget::MenuWidget(uint32_t displayTime, WidgetFlags action)
     : _displayTime(displayTime),
@@ -657,7 +723,6 @@ bool MenuWidget::handleButtonEvent(const ButtonEvent& event)
     }
 
     bool handled = false;
-    bool closed = false;
 
     switch (event.type)
     {
@@ -679,12 +744,11 @@ bool MenuWidget::handleButtonEvent(const ButtonEvent& event)
         case ButtonType::LEFT:
             if (iconGridActive())
             {
-                gridMove(-1, 0); // icon grid: LEFT moves the cursor; exit via the "Exit" tile
+                navigateUp(); // carousel: LEFT = previous entry; exit via "< Exit" or holding LEFT
             }
             else if (_menuStack.empty())
             {
                 closeMenu(); // text-list root: LEFT closes + frees the built tree
-                closed = true;
             }
             else
             {
@@ -699,6 +763,8 @@ bool MenuWidget::handleButtonEvent(const ButtonEvent& event)
             break;
     }
 
+    // Closed by this key (LEFT at the root, "< Exit" via OK or RIGHT): the resume() below would reopen it.
+    const bool closed = (getAction() & WidgetFlags::DisplayEnabled) == 0 && _state == WidgetState::BACKGROUND;
     if (handled && !closed)
     {
         _lastButtonPressTime = event.timestamp;
@@ -790,7 +856,7 @@ bool MenuWidget::isDhcpLocked(const MenuConfig::MenuOption& item) const
 }
 
 // Right-aligned text/indicator for an item; empty when it has no trailing value.
-//   Readonly -> valueProvider   ProgToggle/Checkbox -> "[x]"/"[ ]"   Dropdown -> selected option
+//   Readonly -> valueProvider   ProgToggle/Checkbox -> drawn by drawMenu()   Dropdown -> selected option
 //   IpEdit/IpAddress -> "a.b.c.d"   Submenu/About/Files -> ">"   Back -> "<"
 std::string MenuWidget::itemValueText(const MenuConfig::MenuOption& item) const
 {
@@ -799,12 +865,6 @@ std::string MenuWidget::itemValueText(const MenuConfig::MenuOption& item) const
         case MenuConfig::MenuElementType::Readonly:
             if (item.valueProvider) return item.valueProvider();
             return std::string();
-
-        case MenuConfig::MenuElementType::ProgToggle:
-            return knx.progMode() ? "[x]" : "[ ]";
-
-        case MenuConfig::MenuElementType::Checkbox:
-            return item.defaultValue.getBool() ? "[x]" : "[ ]";
 
         case MenuConfig::MenuElementType::Dropdown:
         {
@@ -859,11 +919,6 @@ std::string MenuWidget::itemValueText(const MenuConfig::MenuOption& item) const
 void MenuWidget::navigateUp()
 {
     logDebugP("Navigate up");
-    if (iconGridActive())
-    {
-        gridMove(0, -1);
-        return;
-    }
     // Step upward to the nearest visible item, skipping hidden ones.
     for (size_t i = _selectedIndex; i-- > 0;)
     {
@@ -880,11 +935,6 @@ void MenuWidget::navigateUp()
 void MenuWidget::navigateDown()
 {
     logDebugP("Navigate down");
-    if (iconGridActive())
-    {
-        gridMove(0, 1);
-        return;
-    }
     // Step downward to the nearest visible item, skipping hidden ones.
     for (size_t i = _selectedIndex + 1; i < _currentMenu.size(); ++i)
     {
@@ -905,7 +955,7 @@ void MenuWidget::navigateLeft()
     logDebugP("Navigate left (back)");
     if (iconGridActive())
     {
-        gridMove(-1, 0);
+        navigateUp(); // carousel: previous entry
         return;
     }
     if (_menuStack.empty())
@@ -939,7 +989,7 @@ void MenuWidget::navigateRight()
     logDebugP("Navigate right (enter)");
     if (iconGridActive())
     {
-        gridMove(1, 0); // in the icon grid RIGHT moves the cursor; OK (selectItem) enters
+        navigateDown(); // carousel: RIGHT = next entry; OK (selectItem) enters
         return;
     }
     if (_currentMenu.empty()) return;
@@ -1326,10 +1376,8 @@ void MenuWidget::drawIpEditor()
     if (!_display || !_display->display) return;
 
     _display->display->clearDisplay();
-    _display->display->setTextWrap(false);
 
     // Title / label row (size 1).
-    _display->display->setTextSize(1);
     _display->display->setTextColor(WHITE, BLACK);
     _display->display->setCursor(2, 0);
     const char* label = (_ipEditIndex < _currentMenu.size())
@@ -1423,8 +1471,8 @@ void MenuWidget::enterTextEdit(size_t itemIndex)
     // valueProvider (live, e.g. the SD volume label) wins over the static defaultValue.
     _textEdit = item.valueProvider ? item.valueProvider()
                                    : (item.defaultValue.isString() ? item.defaultValue.getString() : std::string());
-    if (_textEdit.empty()) _textEdit = " ";                                    // seed one editable cell
-    if (_textEdit.size() > TEXT_EDIT_MAX) _textEdit.resize(TEXT_EDIT_MAX);
+    if (_textEdit.empty()) _textEdit = " "; // seed one editable cell
+    if (_textEdit.size() > textMax()) _textEdit.resize(textMax());
     _textCursor = 0;
     _mode = MenuMode::TextEdit;
     _editBlinkOn = true;
@@ -1455,27 +1503,72 @@ void MenuWidget::cancelTextEdit()
     leaveEditor();
 }
 
+// Length limit of the edited TextInput item: MenuOption::ip[0] when set, capped at TEXT_EDIT_MAX.
+uint8_t MenuWidget::textMax() const
+{
+    uint8_t limit = 0;
+    if (_textEditIndex < _currentMenu.size() && _currentMenu[_textEditIndex].type == MenuConfig::MenuElementType::TextInput)
+        limit = _currentMenu[_textEditIndex].ip[0];
+    return (limit == 0 || limit > TEXT_EDIT_MAX) ? TEXT_EDIT_MAX : limit;
+}
+
+// Characters the edited TextInput item accepts: a non-empty dropdownOptions[0], else nullptr (every character).
+const char* MenuWidget::textAllowed() const
+{
+    if (_textEditIndex >= _currentMenu.size() || _currentMenu[_textEditIndex].type != MenuConfig::MenuElementType::TextInput)
+        return nullptr;
+    const auto& opts = _currentMenu[_textEditIndex].dropdownOptions;
+    return (opts.empty() || opts[0].empty()) ? nullptr : opts[0].c_str();
+}
+
+// Held UP/DOWN (routed by DeviceDisplay): jump to the first accepted character of the next/previous group.
+bool MenuWidget::externalTextGroupJump(bool next)
+{
+    if (_mode != MenuMode::TextEdit) return false;
+    _lastButtonPressTime = millis();
+    if (_state == WidgetState::BACKGROUND) resume();
+    if (_textCursor < _textEdit.size())
+    {
+        const char* allowed = textAllowed();
+        const int16_t idx = charIndex(_textEdit[_textCursor]);
+        uint8_t g = (idx < 0) ? (next ? 3 : 0) : charGroup(idx); // unknown character: next -> abc, previous -> #+=
+        for (uint8_t tries = 0; tries < 4; tries++)
+        {
+            g = static_cast<uint8_t>((g + (next ? 1 : 3)) % 4);
+            const int16_t end = (g < 3) ? kGroupStart[g + 1] : kCharsetLen;
+            int16_t c = kGroupStart[g];
+            while (c < end && allowed && !strchr(allowed, kCharset[c]))
+                c++;
+            if (c < end)
+            {
+                _textEdit[_textCursor] = kCharset[c];
+                break;
+            }
+        }
+    }
+    _editBlinkOn = true;
+    _editBlinkLast = millis();
+    _needsRedraw = true;
+    return true;
+}
+
 // PRESS handling for the text editor.
-//   UP/DOWN : cycle the char at the cursor through CHARSET
+//   UP/DOWN : next/previous accepted char of kCharset at the cursor (wrapping)
 //   LEFT    : cursor-- , EXCEPT LEFT at cursor 0 cancels (back)
-//   RIGHT   : cursor++ , or grow by one char (space) past the end (up to TEXT_EDIT_MAX)
+//   RIGHT   : cursor++ , or grow by one char (space) past the end (up to textMax())
 //   OK      : commit + leave
 bool MenuWidget::handleTextEditButton(const ButtonEvent& event)
 {
-    static const std::string CHARSET =
-        " ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-";
-    const size_t N = CHARSET.size();
-
     switch (event.type)
     {
         case ButtonType::UP:
         case ButtonType::DOWN:
         {
             if (_textCursor >= _textEdit.size()) break;
-            size_t idx = CHARSET.find(_textEdit[_textCursor]);
-            if (idx == std::string::npos) idx = 0;
-            idx = (event.type == ButtonType::UP) ? (idx + 1) % N : (idx + N - 1) % N;
-            _textEdit[_textCursor] = CHARSET[idx];
+            const int8_t dir = (event.type == ButtonType::UP) ? 1 : -1;
+            int16_t idx = charIndex(_textEdit[_textCursor]);
+            if (idx < 0) idx = (dir > 0) ? static_cast<int16_t>(kCharsetLen - 1) : 0; // unknown: UP -> first, DOWN -> last
+            _textEdit[_textCursor] = kCharset[charStep(idx, dir, textAllowed())];
             break;
         }
 
@@ -1491,7 +1584,7 @@ bool MenuWidget::handleTextEditButton(const ButtonEvent& event)
         case ButtonType::RIGHT:
             if (static_cast<size_t>(_textCursor) + 1 < _textEdit.size())
                 _textCursor++;
-            else if (_textEdit.size() < TEXT_EDIT_MAX)
+            else if (_textEdit.size() < textMax())
             {
                 _textEdit.push_back(' ');
                 _textCursor = static_cast<uint8_t>(_textEdit.size() - 1);
@@ -1512,63 +1605,83 @@ bool MenuWidget::handleTextEditButton(const ButtonEvent& event)
     return true;
 }
 
-// Render the text editor: label on top, the string large + windowed (cursor stays visible); the
-// active character blinks (hidden on the "off" phase of the ~500ms toggle).
+// Render the text editor: header "label  n/max", the string at size 2 windowed so the cursor stays
+// visible (active cell blinks), the charset neighbours at y34, the four groups at y46 and the key hint at y56.
 void MenuWidget::drawTextEditor()
 {
     if (!_display || !_display->display) return;
     auto* d = _display->display;
 
     d->clearDisplay();
-    d->setTextWrap(false);
-
-    // Title / label row (size 1).
-    d->setTextSize(1);
-    d->setTextColor(WHITE, BLACK);
-    d->setCursor(2, 0);
     const char* label = (_textEditIndex < _currentMenu.size()) ? _currentMenu[_textEditIndex].label.c_str() : "Text";
-    d->print(label);
+    // Count what OK would store: trailing spaces (the seeded or grown empty cells) are trimmed on commit.
+    const size_t last = _textEdit.find_last_not_of(' ');
+    OpenKNX::Ui::headerPos(*d, label, static_cast<uint16_t>(last == std::string::npos ? 0 : last + 1), textMax());
 
-    // Characters at size 2, windowed so the cursor is always visible (~10 chars fit at 128px).
+    // Characters at size 2 from x4, y14; 10 cells of 12 px.
     d->setTextSize(2);
     const int16_t cellW = 12;
-    const int16_t cellH = 16;
-    const uint8_t visible = static_cast<uint8_t>((_screenWidth - 4) / cellW);
-    uint8_t start = 0;
-    if (visible > 0 && _textCursor >= visible) start = static_cast<uint8_t>(_textCursor - visible + 1);
-    const int16_t y = static_cast<int16_t>((_screenHeight - cellH) / 2);
-
-    int16_t cx = 2;
-    for (uint8_t i = start; i < _textEdit.size() && i < start + visible; ++i)
+    const uint8_t visible = 10;
+    const uint8_t start = (_textCursor >= visible) ? static_cast<uint8_t>(_textCursor - visible + 1) : 0;
+    int16_t cx = 4;
+    for (uint8_t i = start; i < _textEdit.size() && i < start + visible; ++i, cx = static_cast<int16_t>(cx + cellW))
     {
-        const bool active = (i == _textCursor);
-        const char c = _textEdit[i];
-        if (active)
+        if (i == _textCursor)
         {
-            if (_editBlinkOn)
+            if (!_editBlinkOn) continue; // "off" phase: leave the active cell blank (blink)
+            d->fillRect(static_cast<int16_t>(cx - 1), 13, 13, 17, WHITE);
+            d->setTextColor(BLACK);
+        }
+        d->setCursor(cx, 14);
+        d->write(static_cast<uint8_t>(_textEdit[i]));
+        d->setTextColor(WHITE);
+    }
+    d->setTextSize(1);
+
+    // Neighbour strip: 4 accepted characters either side of the active one, the active one inverted; space as '_'.
+    if (_textCursor < _textEdit.size())
+    {
+        const char active = _textEdit[_textCursor];
+        const int16_t idx = charIndex(active);
+        const char* allowed = textAllowed();
+        d->fillRect(58, 32, 11, 11, WHITE);
+        d->setTextColor(BLACK);
+        d->setCursor(61, 34);
+        d->write(static_cast<uint8_t>(active == ' ' ? '_' : active));
+        d->setTextColor(WHITE);
+        if (idx >= 0)
+        {
+            int16_t left = idx, right = idx;
+            for (int16_t n = 1; n <= 4; n++)
             {
-                d->fillRect(cx - 1, y - 1, cellW + 1, cellH + 1, WHITE);
-                d->setTextColor(BLACK, WHITE);
-                d->setCursor(cx, y);
-                d->write(static_cast<uint8_t>(c));
-                d->setTextColor(WHITE, BLACK);
+                left = charStep(left, -1, allowed);
+                right = charStep(right, 1, allowed);
+                const char lc = kCharset[left], rc = kCharset[right];
+                d->setCursor(static_cast<int16_t>(61 - 12 * n), 34);
+                d->write(static_cast<uint8_t>(lc == ' ' ? '_' : lc));
+                d->setCursor(static_cast<int16_t>(61 + 12 * n), 34);
+                d->write(static_cast<uint8_t>(rc == ' ' ? '_' : rc));
             }
-            // "off" phase: leave the active cell blank (blink).
         }
-        else
+
+        // Groups; the one holding the active character inverted.
+        const int8_t activeGroup = (idx >= 0) ? static_cast<int8_t>(charGroup(idx)) : -1;
+        for (uint8_t g = 0; g < 4; g++)
         {
-            d->setTextColor(WHITE, BLACK);
-            d->setCursor(cx, y);
-            d->write(static_cast<uint8_t>(c));
+            const int16_t gx = static_cast<int16_t>(10 + 30 * g);
+            if (g == activeGroup)
+            {
+                d->fillRoundRect(static_cast<int16_t>(gx - 3), 45, 23, 10, 2, WHITE);
+                d->setTextColor(BLACK);
+            }
+            d->setCursor(gx, 46);
+            d->print(kGroupName[g]);
+            d->setTextColor(WHITE);
         }
-        cx = static_cast<int16_t>(cx + cellW);
     }
 
-    // Footer hint (size 1).
-    d->setTextSize(1);
-    d->setTextColor(WHITE, BLACK);
-    d->setCursor(2, static_cast<int16_t>(_screenHeight - 9));
-    d->print("OK=ok  <=back");
+    d->setCursor(0, 56);
+    d->print("OK=done ^v hold=group");
 
     _display->displayBuff();
 }
@@ -1630,13 +1743,8 @@ void MenuWidget::drawConfirmDialog()
     auto* d = _display->display;
 
     d->clearDisplay();
-    d->setTextWrap(false);
-    d->setTextSize(1);
+    OpenKNX::Ui::header(*d, _confirmTitle.c_str());
     d->setTextColor(WHITE, BLACK);
-
-    d->setCursor(2, 0);
-    d->print(_confirmTitle.c_str());
-    d->drawLine(0, 10, _screenWidth, 10, WHITE);
 
     // Message word-wrapped to full-width lines (6px font), up to 3 lines at y=14/23/32. Break at the
     // last space that fits so words are not split mid-letter; fall back to a hard cut for a word that
@@ -1653,9 +1761,8 @@ void MenuWidget::drawConfirmDialog()
             if (sp != std::string::npos && sp > pos)
                 len = sp - pos; // break at the last space within the line
         }
-        const std::string ln = _confirmMessage.substr(pos, len);
         d->setCursor(2, my);
-        d->print(ln.c_str());
+        d->write(reinterpret_cast<const uint8_t*>(_confirmMessage.c_str() + pos), len);
         pos += len;
         while (pos < _confirmMessage.size() && _confirmMessage[pos] == ' ')
             pos++; // swallow the break space(s)
@@ -1677,10 +1784,9 @@ void MenuWidget::drawConfirmDialog()
             d->drawRect(bx, by, bw, bh, WHITE);
             d->setTextColor(WHITE);
         }
-        const std::string s = OPTS[i];
-        const int16_t tw = (int16_t)(s.size() * 6);
+        const int16_t tw = (int16_t)(strlen(OPTS[i]) * 6);
         d->setCursor((int16_t)(bx + (bw - tw) / 2), (int16_t)(by + 4));
-        d->print(s.c_str());
+        d->print(OPTS[i]);
         d->setTextColor(WHITE, BLACK);
     }
 
@@ -1770,13 +1876,8 @@ void MenuWidget::drawNumberEditor()
     auto* d = _display->display;
 
     d->clearDisplay();
-    d->setTextWrap(false);
-
-    d->setTextSize(1);
-    d->setTextColor(WHITE, BLACK);
-    d->setCursor(2, 0);
     const char* label = (_numberEditIndex < _currentMenu.size()) ? _currentMenu[_numberEditIndex].label.c_str() : "Value";
-    d->print(label);
+    OpenKNX::Ui::header(*d, label);
 
     // 3 digits at size 2, the active one blinks; "min" at size 1 after them.
     const int16_t cellW = 12, cellH = 16;
@@ -1817,9 +1918,9 @@ void MenuWidget::drawNumberEditor()
     // Zero-label hint + control hint (footer).
     if (_numberEdit == 0)
     {
-        const std::string z = std::string("0 = ") + _numberZeroLabel;
         d->setCursor(2, static_cast<int16_t>(_screenHeight - 18));
-        d->print(z.c_str());
+        d->print("0 = ");
+        d->print(_numberZeroLabel.c_str());
     }
     d->setCursor(2, static_cast<int16_t>(_screenHeight - 9));
     d->print("OK=ok  <=back");
@@ -1943,8 +2044,6 @@ void MenuWidget::drawReorder()
     if (!_display || !_display->display) return;
 
     _display->display->clearDisplay();
-    _display->display->setTextSize(1);
-    _display->display->setTextWrap(false);
 
     WidgetsManager* wm = openknxDisplayModule.getWidgetManager();
     std::vector<Widget*> widgets;
@@ -2102,8 +2201,8 @@ bool MenuWidget::handleRadioSelectButton(const ButtonEvent& event)
     return true;
 }
 
-// Render the radio picker: title + a scrollable option list; the highlighted row is inverted with a
-// filled bullet, others hollow. Up/down carets hint at more items when the list scrolls.
+// Render the radio picker: header "label  n/m" + 5 option rows from y12 in 10 px; the highlighted row is inverted
+// with a filled bullet, others hollow. More than 5 options add the list scrollbar.
 void MenuWidget::drawRadioSelect()
 {
     if (!_display || !_display->display) return;
@@ -2117,18 +2216,9 @@ void MenuWidget::drawRadioSelect()
     const size_t count = item.dropdownOptions.size();
 
     d->clearDisplay();
-    d->setTextWrap(false);
-    d->setTextSize(1);
+    OpenKNX::Ui::headerPos(*d, item.label.c_str(), static_cast<uint16_t>(_radioSel + 1), static_cast<uint16_t>(count));
 
-    // Title row (item label) + hairline separator.
-    d->setTextColor(WHITE, BLACK);
-    d->setCursor(2, 0);
-    d->print(truncateToWidth(item.label, static_cast<int16_t>(_screenWidth) - 4).c_str());
-    d->drawFastHLine(0, 10, static_cast<int16_t>(_screenWidth), WHITE);
-
-    const int16_t listTop = 12;
-    const uint8_t ROW_H = 11;
-    const uint8_t visibleRows = static_cast<uint8_t>((static_cast<int16_t>(_screenHeight) - listTop) / ROW_H);
+    const uint8_t visibleRows = ListRows;
     if (visibleRows == 0 || count == 0)
     {
         _display->displayBuff();
@@ -2141,33 +2231,27 @@ void MenuWidget::drawRadioSelect()
         _radioTop = _radioSel - visibleRows + 1;
     if (count >= visibleRows && _radioTop + visibleRows > count) _radioTop = count - visibleRows;
 
+    const bool scrollbar = count > visibleRows;
+    const int16_t rowW = scrollbar ? 124 : static_cast<int16_t>(_screenWidth); // selection fill and text end before rowW
     for (size_t row = 0; row < visibleRows && (_radioTop + row) < count; ++row)
     {
         const size_t idx = _radioTop + row;
-        const int16_t y = static_cast<int16_t>(listTop + row * ROW_H);
+        const int16_t y = static_cast<int16_t>(ListTop + row * ListPitch);
         const bool sel = (idx == _radioSel);
         const uint16_t fg = sel ? BLACK : WHITE;
-        const uint16_t bg = sel ? WHITE : BLACK;
 
-        if (sel) d->fillRect(0, static_cast<int16_t>(y - 1), static_cast<int16_t>(_screenWidth), ROW_H, WHITE);
+        if (sel) d->fillRect(0, y, rowW, ListPitch, WHITE);
 
         // Radio bullet: filled dot when selected, hollow ring otherwise.
         const int16_t cx = 6, cy = static_cast<int16_t>(y + 4);
         d->drawCircle(cx, cy, 3, fg);
         if (sel) d->fillCircle(cx, cy, 1, fg);
 
-        d->setTextColor(fg, bg);
-        d->setCursor(14, static_cast<int16_t>(y + 1));
-        d->print(truncateToWidth(item.dropdownOptions[idx], static_cast<int16_t>(_screenWidth) - 16).c_str());
+        d->setTextColor(fg);
+        OpenKNX::Ui::printCut(*d, 14, static_cast<int16_t>(y + 1), item.dropdownOptions[idx].c_str(), static_cast<int16_t>((rowW - 14) / CharW));
     }
-
-    // Scroll carets when there is more above / below the visible window.
-    const int16_t sw = static_cast<int16_t>(_screenWidth);
-    const int16_t sh = static_cast<int16_t>(_screenHeight);
-    if (_radioTop > 0)
-        d->fillTriangle(static_cast<int16_t>(sw - 6), 12, static_cast<int16_t>(sw - 10), 16, static_cast<int16_t>(sw - 2), 16, WHITE);
-    if (_radioTop + visibleRows < count)
-        d->fillTriangle(static_cast<int16_t>(sw - 6), static_cast<int16_t>(sh - 1), static_cast<int16_t>(sw - 10), static_cast<int16_t>(sh - 5), static_cast<int16_t>(sw - 2), static_cast<int16_t>(sh - 5), WHITE);
+    d->setTextColor(WHITE);
+    if (scrollbar) drawScrollbar(d, _radioTop, count);
 
     _display->displayBuff();
 }
@@ -2268,14 +2352,7 @@ void MenuWidget::drawSlider()
     }
 
     d->clearDisplay();
-    d->setTextWrap(false);
-    d->setTextSize(1);
-
-    // Title row + hairline separator.
-    d->setTextColor(WHITE, BLACK);
-    d->setCursor(2, 0);
-    d->print(truncateToWidth(item.label, static_cast<int16_t>(_screenWidth) - 4).c_str());
-    d->drawFastHLine(0, 10, static_cast<int16_t>(_screenWidth), WHITE);
+    OpenKNX::Ui::header(*d, item.label.c_str());
 
     // Slider track (rounded rect); fill proportional to the current stop.
     const int16_t margin = 8;
@@ -2309,211 +2386,6 @@ void MenuWidget::drawSlider()
     _display->displayBuff();
 }
 
-// ---------------- Icon main menu (root icon grid) ----------------
-
-// Move the root cursor within the ICON_COLS x ICON_ROWS grid (dCol/dRow -1/0/+1), clamped at the
-// edges; DOWN into a partial last row lands on the last item.
-void MenuWidget::gridMove(int dCol, int dRow)
-{
-    std::vector<size_t> vis;
-    vis.reserve(_currentMenu.size());
-    for (size_t i = 0; i < _currentMenu.size(); ++i)
-        if (isItemVisible(_currentMenu[i])) vis.push_back(i);
-    if (vis.empty()) return;
-
-    size_t pos = 0;
-    for (size_t v = 0; v < vis.size(); ++v)
-        if (vis[v] == _selectedIndex)
-        {
-            pos = v;
-            break;
-        }
-
-    const int cols = ICON_COLS;
-    const int col = static_cast<int>(pos) % cols;
-    int np = static_cast<int>(pos);
-    if (dCol > 0 && col < cols - 1 && pos + 1 < vis.size())
-        np = static_cast<int>(pos) + 1;
-    else if (dCol < 0 && col > 0)
-        np = static_cast<int>(pos) - 1;
-    else if (dRow > 0)
-    {
-        if (pos + static_cast<size_t>(cols) < vis.size())
-            np = static_cast<int>(pos) + cols;
-        else if (pos / cols < (vis.size() - 1) / cols) // partial last row -> last item
-            np = static_cast<int>(vis.size()) - 1;
-    }
-    else if (dRow < 0 && pos >= static_cast<size_t>(cols))
-        np = static_cast<int>(pos) - cols;
-
-    if (np >= 0 && np < static_cast<int>(vis.size()) && vis[static_cast<size_t>(np)] != _selectedIndex)
-    {
-        _selectedIndex = vis[static_cast<size_t>(np)];
-        _needsRedraw = true;
-    }
-}
-
-// Render the root as a paged ICON_COLS x ICON_ROWS icon grid; the selected cell is inverted. Page
-// dots along the bottom when > 1 page.
-void MenuWidget::drawIconMenu()
-{
-    if (!_display || !_display->display) return;
-    Adafruit_SSD1306* d = _display->display;
-    d->clearDisplay();
-    d->setTextSize(1);
-    d->setTextWrap(false);
-
-    std::vector<size_t> vis;
-    vis.reserve(_currentMenu.size());
-    for (size_t i = 0; i < _currentMenu.size(); ++i)
-        if (isItemVisible(_currentMenu[i])) vis.push_back(i);
-    if (vis.empty())
-    {
-        _display->displayBuff();
-        return;
-    }
-
-    size_t sel = 0;
-    for (size_t v = 0; v < vis.size(); ++v)
-        if (vis[v] == _selectedIndex)
-        {
-            sel = v;
-            break;
-        }
-
-    // Top header line: the selected item's full label (instead of a tiny caption under every icon).
-    const int16_t HEADER_H = 11;
-    {
-        const std::string title = truncateToWidth(_currentMenu[vis[sel]].label, static_cast<int16_t>(_screenWidth - 2));
-        int16_t tbx, tby;
-        uint16_t tbw, tbh;
-        d->getTextBounds(title.c_str(), 0, 0, &tbx, &tby, &tbw, &tbh);
-        int16_t tx = static_cast<int16_t>((static_cast<int16_t>(_screenWidth) - static_cast<int16_t>(tbw)) / 2);
-        if (tx < 1) tx = 1;
-        d->setTextColor(WHITE, BLACK);
-        d->setCursor(tx, 1);
-        d->print(title.c_str());
-        d->drawFastHLine(0, static_cast<int16_t>(HEADER_H - 1), static_cast<int16_t>(_screenWidth), WHITE);
-    }
-
-    const int cols = ICON_COLS, rows = ICON_ROWS, perPage = cols * rows;
-    const size_t page = sel / static_cast<size_t>(perPage);
-    const size_t start = page * static_cast<size_t>(perPage);
-    const size_t pages = (vis.size() + perPage - 1) / static_cast<size_t>(perPage);
-
-    const int16_t sw = static_cast<int16_t>(_screenWidth);
-    const int16_t footer = (pages > 1) ? 4 : 0; // room for page dots
-    const int16_t cellW = static_cast<int16_t>(sw / cols);
-    const int16_t cellH = static_cast<int16_t>((static_cast<int16_t>(_screenHeight) - HEADER_H - footer) / rows);
-
-    for (size_t k = 0; k < static_cast<size_t>(perPage) && (start + k) < vis.size(); ++k)
-    {
-        const size_t idx = vis[start + k];
-        const int16_t c = static_cast<int16_t>(k % cols), r = static_cast<int16_t>(k / cols);
-        const int16_t x0 = static_cast<int16_t>(c * cellW), y0 = static_cast<int16_t>(HEADER_H + r * cellH);
-        const bool selCell = (start + k == sel);
-        const uint16_t fg = selCell ? BLACK : WHITE;
-        if (selCell) d->fillRoundRect(static_cast<int16_t>(x0 + 1), static_cast<int16_t>(y0 + 1), static_cast<int16_t>(cellW - 2), static_cast<int16_t>(cellH - 2), 3, WHITE);
-
-        // Icon centred in the cell; label is the top header, no per-icon caption.
-        const int16_t iconX = static_cast<int16_t>(x0 + cellW / 2), iconY = static_cast<int16_t>(y0 + cellH / 2);
-        if (_currentMenu[idx].icon)
-            d->drawBitmap(static_cast<int16_t>(iconX - 6), static_cast<int16_t>(iconY - 6), _currentMenu[idx].icon, 13, 13, fg);
-        else
-            drawCategoryIcon(_currentMenu[idx].label, iconX, iconY, fg);
-    }
-
-    if (pages > 1)
-    {
-        const int16_t totalW = static_cast<int16_t>(pages * 4 - 1);
-        int16_t dx = static_cast<int16_t>((sw - totalW) / 2);
-        for (size_t pd = 0; pd < pages; ++pd)
-        {
-            d->fillRect(dx, static_cast<int16_t>(_screenHeight - 2), (pd == page) ? 3 : 2, 2, WHITE);
-            dx = static_cast<int16_t>(dx + 4);
-        }
-    }
-
-    _display->displayBuff();
-}
-
-// Draw an ~18x18 category glyph at (cx,cy) in colour `col`, chosen by the item label (pure GFX
-// primitives). More-specific matches are tested before shorter ones.
-void MenuWidget::drawCategoryIcon(const std::string& label, int16_t cx, int16_t cy, uint16_t col)
-{
-    Adafruit_SSD1306* d = _display->display;
-    const auto has = [&](const char* s) { return label.find(s) != std::string::npos; };
-
-    if (has("System-Info") || has("Info"))
-    {
-        // "i" in a circle
-        d->drawCircle(cx, cy, 8, col);
-        d->fillRect(static_cast<int16_t>(cx - 1), static_cast<int16_t>(cy - 4), 2, 2, col); // dot
-        d->fillRect(static_cast<int16_t>(cx - 1), static_cast<int16_t>(cy - 1), 2, 5, col); // stem
-    }
-    else if (has("Display"))
-    {
-        // monitor + stand
-        d->drawRoundRect(static_cast<int16_t>(cx - 9), static_cast<int16_t>(cy - 7), 18, 12, 2, col);
-        d->drawFastHLine(static_cast<int16_t>(cx - 4), static_cast<int16_t>(cy + 7), 8, col);
-        d->drawFastVLine(cx, static_cast<int16_t>(cy + 5), 2, col);
-    }
-    else if (has("Network") || has("LAN"))
-    {
-        // 3-node topology (coupler + two devices)
-        d->drawLine(cx, static_cast<int16_t>(cy - 5), static_cast<int16_t>(cx - 7), static_cast<int16_t>(cy + 5), col);
-        d->drawLine(cx, static_cast<int16_t>(cy - 5), static_cast<int16_t>(cx + 7), static_cast<int16_t>(cy + 5), col);
-        d->fillCircle(cx, static_cast<int16_t>(cy - 6), 2, col);
-        d->fillCircle(static_cast<int16_t>(cx - 7), static_cast<int16_t>(cy + 6), 2, col);
-        d->fillCircle(static_cast<int16_t>(cx + 7), static_cast<int16_t>(cy + 6), 2, col);
-    }
-    else if (has("Widget"))
-    {
-        // 2x2 tiles
-        d->drawRect(static_cast<int16_t>(cx - 8), static_cast<int16_t>(cy - 8), 7, 7, col);
-        d->drawRect(static_cast<int16_t>(cx + 1), static_cast<int16_t>(cy - 8), 7, 7, col);
-        d->drawRect(static_cast<int16_t>(cx - 8), static_cast<int16_t>(cy + 1), 7, 7, col);
-        d->drawRect(static_cast<int16_t>(cx + 1), static_cast<int16_t>(cy + 1), 7, 7, col);
-    }
-    else if (has("Home"))
-    {
-        // D-pad (plus)
-        d->fillRect(static_cast<int16_t>(cx - 2), static_cast<int16_t>(cy - 8), 5, 17, col);
-        d->fillRect(static_cast<int16_t>(cx - 8), static_cast<int16_t>(cy - 2), 17, 5, col);
-    }
-    else if (has("About"))
-    {
-        // developer: head + shoulders silhouette
-        d->fillCircle(cx, static_cast<int16_t>(cy - 4), 3, col);
-        d->fillTriangle(static_cast<int16_t>(cx - 7), static_cast<int16_t>(cy + 8), static_cast<int16_t>(cx + 7), static_cast<int16_t>(cy + 8), cx, static_cast<int16_t>(cy + 1), col);
-    }
-    else if (has("SD") || has("Card"))
-    {
-        // SD card (rect with a cut top-right corner)
-        d->drawLine(static_cast<int16_t>(cx - 6), static_cast<int16_t>(cy - 8), static_cast<int16_t>(cx + 2), static_cast<int16_t>(cy - 8), col);
-        d->drawLine(static_cast<int16_t>(cx + 2), static_cast<int16_t>(cy - 8), static_cast<int16_t>(cx + 6), static_cast<int16_t>(cy - 4), col);
-        d->drawLine(static_cast<int16_t>(cx + 6), static_cast<int16_t>(cy - 4), static_cast<int16_t>(cx + 6), static_cast<int16_t>(cy + 8), col);
-        d->drawLine(static_cast<int16_t>(cx + 6), static_cast<int16_t>(cy + 8), static_cast<int16_t>(cx - 6), static_cast<int16_t>(cy + 8), col);
-        d->drawLine(static_cast<int16_t>(cx - 6), static_cast<int16_t>(cy + 8), static_cast<int16_t>(cx - 6), static_cast<int16_t>(cy - 8), col);
-    }
-    else if (has("System"))
-    {
-        // gear: circle + 4 teeth + hub
-        d->drawCircle(cx, cy, 6, col);
-        d->fillCircle(cx, cy, 2, col);
-        d->fillRect(static_cast<int16_t>(cx - 1), static_cast<int16_t>(cy - 9), 2, 3, col);
-        d->fillRect(static_cast<int16_t>(cx - 1), static_cast<int16_t>(cy + 6), 2, 3, col);
-        d->fillRect(static_cast<int16_t>(cx - 9), static_cast<int16_t>(cy - 1), 3, 2, col);
-        d->fillRect(static_cast<int16_t>(cx + 6), static_cast<int16_t>(cy - 1), 3, 2, col);
-    }
-    else
-    {
-        // generic: rounded tile with a dot
-        d->drawRoundRect(static_cast<int16_t>(cx - 8), static_cast<int16_t>(cy - 8), 16, 16, 3, col);
-        d->fillCircle(cx, cy, 2, col);
-    }
-}
-
 // External navigation methods (just delegate to internal ones)
 void MenuWidget::externalNavigateUp() { navigateUp(); }
 void MenuWidget::externalNavigateDown() { navigateDown(); }
@@ -2532,58 +2404,11 @@ void MenuWidget::clearDisplay()
     _display->displayBuff();
 }
 
-// `text` truncated with an ASCII "..." if it exceeds `maxWidth` px. Caller must have set the
-// text size first (drawMenu uses size 1).
-std::string MenuWidget::truncateToWidth(const std::string& text, int16_t maxWidth) const
-{
-    if (!_display || !_display->display || maxWidth <= 0) return text;
-
-    auto widthOf = [this](const std::string& s) -> int16_t {
-        int16_t bx, by;
-        uint16_t bw, bh;
-        _display->display->getTextBounds(s.c_str(), 0, 0, &bx, &by, &bw, &bh);
-        return static_cast<int16_t>(bw);
-    };
-
-    if (widthOf(text) <= maxWidth) return text;
-
-    // Overflow: find the longest prefix that fits together with the "..." suffix.
-    static const char* kEllipsis = "...";
-    for (size_t len = text.size(); len-- > 0;)
-    {
-        const std::string candidate = text.substr(0, len) + kEllipsis;
-        if (widthOf(candidate) <= maxWidth) return candidate;
-    }
-    // Not even "..." fits: return it anyway (hard-clipped) rather than nothing.
-    return kEllipsis;
-}
-
-// Small graphic on/off toggle switch (rounded pill + knob) for a bool row's value area. `color` is
-// the row foreground. Replaces the old "[x]"/"[ ]" text for Checkbox/ProgToggle.
-void MenuWidget::drawToggleSwitch(int16_t x, int16_t y, int16_t w, int16_t h, bool on, uint16_t fg, uint16_t bg)
-{
-    if (!_display || !_display->display) return;
-    auto* d = _display->display;
-    const int16_t r = static_cast<int16_t>(h / 2);        // pill corner radius (stadium shape)
-    const int16_t knobR = static_cast<int16_t>(h / 2 - 2); // knob radius (leaves a 1px gap inside the pill)
-    const int16_t cy = static_cast<int16_t>(y + h / 2);
-    if (on)
-    {
-        // ON: solid filled pill with the knob to the RIGHT in the background colour -> reads as a clear switch.
-        d->fillRoundRect(x, y, w, h, r, fg);
-        d->fillCircle(static_cast<int16_t>(x + w - 1 - r), cy, knobR, bg);
-    }
-    else
-    {
-        // OFF: outlined pill with the knob to the LEFT (empty track).
-        d->drawRoundRect(x, y, w, h, r, fg);
-        d->fillCircle(static_cast<int16_t>(x + r), cy, knobR, fg);
-    }
-}
-
 void MenuWidget::drawMenu()
 {
     if (!_display || !_display->display) return;
+    Adafruit_SSD1306* d = _display->display;
+    OpenKNX::Ui::begin(*d); // T7: every menu and editor frame starts from size 1, WHITE, no wrap
 
     // Editor sub-modes draw their own full-screen editor.
     if (_mode == MenuMode::IpEdit)
@@ -2622,9 +2447,7 @@ void MenuWidget::drawMenu()
         return;
     }
 
-    _display->display->clearDisplay();
-    _display->display->setTextSize(1); // Normal 1:1 pixel scale
-    _display->display->setTextWrap(false);
+    d->clearDisplay();
 
     if (_infoOverlayActive && _overlayDrawFunction)
     {
@@ -2632,143 +2455,121 @@ void MenuWidget::drawMenu()
         return;                 // Skip the rest of the menu drawing
     }
 
-    // Icon main menu: at the root, render the categories as an icon grid instead of a text list.
-    if (iconGridActive())
-    {
-        drawIconMenu();
-        return;
-    }
-
-    const uint8_t ITEM_HEIGHT = 10;
-    const uint8_t ITEM_MARGIN = 2;
-    const uint8_t MAX_VISIBLE_ITEMS = _screenHeight / (ITEM_HEIGHT + ITEM_MARGIN);
-
-    // Build the list of VISIBLE row indices (visibleIf + devOnly); filtered rows are neither
-    // drawn nor counted toward paging.
-    std::vector<size_t> visible;
-    visible.reserve(_currentMenu.size());
+    // Visible entries (visibleIf + devOnly): count, position of the selection, its visible neighbours.
+    constexpr size_t NONE = static_cast<size_t>(-1);
+    size_t count = 0, selVis = 0, prev = NONE, next = NONE;
     for (size_t i = 0; i < _currentMenu.size(); ++i)
     {
-        if (isItemVisible(_currentMenu[i])) visible.push_back(i);
+        if (!isItemVisible(_currentMenu[i])) continue;
+        if (i < _selectedIndex)
+            prev = i;
+        else if (i == _selectedIndex)
+            selVis = count;
+        else if (next == NONE)
+            next = i;
+        ++count;
     }
-    if (visible.empty())
+    if (count == 0)
     {
         _display->displayBuff();
         return;
     }
 
-    // Locate the selected item within the visible list (fallback to first).
-    size_t selVis = 0;
-    for (size_t v = 0; v < visible.size(); ++v)
+    // Icon main menu: at the root, the categories as a carousel instead of a text list.
+    if (iconGridActive())
     {
-        if (visible[v] == _selectedIndex)
-        {
-            selVis = v;
-            break;
-        }
+        drawCarousel(count, selVis, prev, next);
+        return;
     }
 
-    const size_t startVis = (selVis >= MAX_VISIBLE_ITEMS) ? selVis - (MAX_VISIBLE_ITEMS - 1) : 0;
+    // Header: "Menu" at the root, else the label of the entry that opened this level.
+    const char* title = "Menu";
+    if (!_menuStack.empty() && !_selectedIndexStack.empty() && _selectedIndexStack.back() < _menuStack.back().size())
+        title = _menuStack.back()[_selectedIndexStack.back()].label.c_str();
+    OpenKNX::Ui::headerPos(*d, title, static_cast<uint16_t>(selVis + 1), static_cast<uint16_t>(count));
 
-    for (size_t v = startVis; v < visible.size() && v < startVis + MAX_VISIBLE_ITEMS; ++v)
+    const bool scrollbar = count > static_cast<size_t>(ListRows);
+    const int16_t rowW = scrollbar ? 124 : static_cast<int16_t>(_screenWidth); // selection fill x0..rowW-1
+    const int16_t valueEnd = scrollbar ? 124 : 126;                             // value cells end at x123 / x125
+    const size_t startVis = (selVis >= static_cast<size_t>(ListRows)) ? selVis - (ListRows - 1) : 0;
+
+    size_t v = 0;
+    for (size_t i = 0; i < _currentMenu.size() && v < startVis + ListRows; ++i)
     {
-        const uint8_t yPos = static_cast<uint8_t>((v - startVis) * (ITEM_HEIGHT + ITEM_MARGIN));
-        const size_t i = visible[v];
-        const bool isSelected = (i == _selectedIndex);
         const auto& item = _currentMenu[i];
+        if (!isItemVisible(item)) continue;
+        if (v++ < startVis) continue;
 
-        if (isSelected)
+        const int16_t y = static_cast<int16_t>(ListTop + (v - 1 - startVis) * ListPitch);
+        const bool isSelected = (i == _selectedIndex);
+        if (isSelected) d->fillRect(0, y, rowW, ListPitch, WHITE);
+        d->setTextColor(isSelected ? BLACK : WHITE);
+
+        // Value forms: toggles "On"/"Off" ("< On >" selected); selected plain Dropdown "< v >", picker/slider
+        // Dropdown "v >"; selected DHCP-locked IP row "auto (DHCP)". The value is never cut, only the label.
+        char wrapped[40];
+        std::string valueText;
+        const char* value = nullptr;
+        if (item.type == MenuConfig::MenuElementType::Checkbox || item.type == MenuConfig::MenuElementType::ProgToggle)
         {
-            _display->display->fillRect(0, yPos, _screenWidth, ITEM_HEIGHT, WHITE);
-            _display->display->setTextColor(BLACK, WHITE);
+            const bool on = (item.type == MenuConfig::MenuElementType::ProgToggle) ? knx.progMode() : item.defaultValue.getBool();
+            value = OpenKNX::Ui::toggleText(on, isSelected);
         }
+        else if (isSelected && isDhcpLocked(item))
+            value = "auto (DHCP)";
         else
         {
-            _display->display->setTextColor(WHITE, BLACK);
+            valueText = itemValueText(item);
+            value = valueText.c_str();
+            if (isSelected && !valueText.empty() && item.type == MenuConfig::MenuElementType::Dropdown)
+            {
+                snprintf(wrapped, sizeof(wrapped), (item.radioList || item.slider) ? "%s >" : "< %s >", value);
+                value = wrapped;
+            }
         }
 
-        // DHCP-locked IP rows show "auto (DHCP)" on the selected row ("auto" on others,
-        // already from itemValueText()).
-        std::string valueText = itemValueText(item);
-        if (isSelected && isDhcpLocked(item)) valueText = "auto (DHCP)";
-
-        // bool rows render a graphic toggle SWITCH instead of "[x]"/"[ ]" text.
-        if (item.type == MenuConfig::MenuElementType::Checkbox ||
-            item.type == MenuConfig::MenuElementType::ProgToggle)
+        int16_t labelEnd = valueEnd; // label cells end at least 2 px before the value, else before valueEnd
+        if (value && *value)
         {
-            const bool on = (item.type == MenuConfig::MenuElementType::ProgToggle)
-                                ? knx.progMode()
-                                : item.defaultValue.getBool();
-            const uint16_t fg = isSelected ? BLACK : WHITE;
-            const uint16_t bg = isSelected ? WHITE : BLACK;
-            const int16_t sw = 16, sh = 8;
-            const int16_t sx = static_cast<int16_t>(_screenWidth) - sw - 2;
-            drawToggleSwitch(sx, static_cast<int16_t>(yPos + 1), sw, sh, on, fg, bg);
-            _display->display->setTextColor(fg, bg);
-            _display->display->setCursor(2, yPos + 2);
-            _display->display->print(truncateToWidth(item.label, sx - 4).c_str());
-            continue; // switch + label drawn; skip the text-value paths below
+            int16_t vx = static_cast<int16_t>(valueEnd - static_cast<int16_t>(strlen(value)) * CharW);
+            if (vx < 0) vx = 0;
+            d->setCursor(vx, static_cast<int16_t>(y + 1));
+            d->print(value);
+            labelEnd = static_cast<int16_t>(vx - 2);
         }
+        OpenKNX::Ui::printCut(*d, 2, static_cast<int16_t>(y + 1), item.label.c_str(), static_cast<int16_t>((labelEnd - 2) / CharW));
+    }
 
-        if (isSelected)
+    if (scrollbar) drawScrollbar(d, startVis, count);
+    d->setTextColor(WHITE);
+    _display->displayBuff();
+}
+
+// Carousel (handbook 2): header "Menu  n/m", the current icon 32x32 centred on (64,29), the neighbours at half size
+// centred on x16 / x112 with a triangle each, the name centred at y47 and the entry's valueProvider text at y56.
+void MenuWidget::drawCarousel(size_t count, size_t selVis, size_t prev, size_t next)
+{
+    Adafruit_SSD1306* d = _display->display;
+    OpenKNX::Ui::headerPos(*d, "Menu", static_cast<uint16_t>(selVis + 1), static_cast<uint16_t>(count));
+    if (_selectedIndex < _currentMenu.size())
+    {
+        const auto& item = _currentMenu[_selectedIndex];
+        if (const uint8_t* icon = OpenKNX::Ui::menuIcon32(item.label.c_str())) d->drawBitmap(48, 13, icon, 32, 32, WHITE);
+        if (prev < _currentMenu.size())
         {
-            // Same layout as the non-selected row: value RIGHT-aligned first, label truncated to fit — so
-            // the VALUE is always visible and only the LABEL shrinks on overflow (the reported bug was the
-            // value collapsing to "<..." on long rows). A plain Dropdown wraps its value in "< value >"
-            // (OK cycles); a radio-list/slider Dropdown shows "value >" (OK opens a picker).
-            const bool opensEditor = (item.radioList || item.slider);
-            std::string valueStr;
-            if (!valueText.empty())
-            {
-                if (item.type == MenuConfig::MenuElementType::Dropdown && !opensEditor)
-                    valueStr = "< " + valueText + " >";
-                else if (item.type == MenuConfig::MenuElementType::Dropdown && opensEditor)
-                    valueStr = valueText + " >";
-                else
-                    valueStr = valueText;
-            }
-
-            int16_t availW = static_cast<int16_t>(_screenWidth) - 4;
-            if (!valueStr.empty())
-            {
-                int16_t bx, by;
-                uint16_t bw, bh;
-                _display->display->getTextBounds(valueStr.c_str(), 0, yPos + 2, &bx, &by, &bw, &bh);
-                int16_t xRight = static_cast<int16_t>(_screenWidth) - static_cast<int16_t>(bw) - 2;
-                if (xRight < 0) xRight = 0;
-                _display->display->setCursor(xRight, yPos + 2);
-                _display->display->print(valueStr.c_str());
-                availW = xRight - 2 - 2; // label runs up to just before the value
-            }
-            if (availW < 0) availW = 0;
-
-            const std::string shownLabel = truncateToWidth(item.label, availW);
-            _display->display->setCursor(2, yPos + 2);
-            _display->display->print(shownLabel.c_str());
+            drawHalfIcon(d, 8, 21, OpenKNX::Ui::menuIcon32(_currentMenu[prev].label.c_str()));
+            d->fillTriangle(1, 29, 4, 26, 4, 32, WHITE);
         }
-        else
+        if (next < _currentMenu.size())
         {
-            // Non-selected row = label (left) + right-aligned value; the label is truncated
-            // with "..." when it would overflow into the value.
-            int16_t availW = static_cast<int16_t>(_screenWidth) - 4; // 2px margins
-            if (!valueText.empty())
-            {
-                int16_t bx, by;
-                uint16_t bw, bh;
-                _display->display->getTextBounds(valueText.c_str(), 0, yPos + 2, &bx, &by, &bw, &bh);
-                int16_t xRight = static_cast<int16_t>(_screenWidth) - static_cast<int16_t>(bw) - 2;
-                if (xRight < 0) xRight = 0;
-                _display->display->setCursor(xRight, yPos + 2);
-                _display->display->print(valueText.c_str());
-
-                // Label may run up to just before the value (leave a small gap).
-                availW = xRight - 2 - 2;
-            }
-            if (availW < 0) availW = 0;
-
-            const std::string shownLabel = truncateToWidth(item.label, availW);
-            _display->display->setCursor(2, yPos + 2);
-            _display->display->print(shownLabel.c_str());
+            drawHalfIcon(d, 104, 21, OpenKNX::Ui::menuIcon32(_currentMenu[next].label.c_str()));
+            d->fillTriangle(126, 29, 123, 26, 123, 32, WHITE);
+        }
+        OpenKNX::Ui::printCentred(*d, 47, item.label.c_str());
+        if (item.valueProvider)
+        {
+            const std::string info = item.valueProvider();
+            OpenKNX::Ui::printCentred(*d, 56, info.c_str());
         }
     }
     _display->displayBuff();

@@ -69,7 +69,7 @@ class MenuConfig
         IpAddress,  // 4-octet IP address editor, backed by MenuOption::ip[4]
         Reorder,    // reorder screen (e.g. widget rotation order)
         Toast,      // action that shows an overlay toast (MenuOption::toast)
-        ProgToggle, // KNX programming-mode toggle ([x]/[ ])
+        ProgToggle, // KNX programming-mode toggle (On/Off)
         Reboot,     // trigger a device reboot
         Files,      // open the SD-card file browser
         About,      // open the "About" screen
@@ -83,7 +83,7 @@ class MenuConfig
         MenuElementType type;
         std::string key;
         MenuValue defaultValue;
-        std::vector<std::string> dropdownOptions;
+        std::vector<std::string> dropdownOptions; // TextInput: [0] = the characters it accepts (absent = all)
         std::optional<std::pair<std::string, MenuValue>> visibleIf;
         std::vector<MenuOption> submenu;
         // Lazy submenu: when `submenu` is empty but this is set, the children are BUILT on entry.
@@ -97,10 +97,10 @@ class MenuConfig
         std::string toast;                          // message shown when a Toast item is selected
         std::string confirmText;                    // non-empty: Action/Toast runs only after a No/Yes guard
         std::function<std::string()> valueProvider; // right-aligned live value for Readonly items
-        uint8_t ip[4] = {0, 0, 0, 0};               // octet carrier for IpEdit items
+        uint8_t ip[4] = {0, 0, 0, 0};               // octet carrier for IpEdit items; TextInput: ip[0] = max length (0 = editor cap)
         bool devOnly = false;                       // item only visible when developer mode is active
         int sortOrder = 0;                          // stable root ordering (0 = registration order)
-        const uint8_t* icon = nullptr;              // optional 13x13 bitmap for the icon menu, else the glyph from the label
+        const uint8_t* icon = nullptr;              // optional 13x13 bitmap; not drawn (the carousel takes its 32x32 icon by label)
 
         // Richer editors for Dropdown items (else the item cycles in place on select).
         bool radioList = false;                     // open a full-screen single-select picker
