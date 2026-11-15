@@ -5,6 +5,8 @@ Entries are grouped by module version; every line traces to a commit in this rep
 
 ## Unreleased
 
+* Change (flush): `displayBuff()` skips the 1 KB copy and diff when the widget frame and the toast are the same as at its last call (a 1 KB compare instead, under a toast a 1 KB hash); the display part of a loop pass went from about 395 to 270 us on average on an RP2350 (rotation, no toast). `i2cDisplay::setOverlay()` takes a key function next to the draw function; `WidgetsManager::setFrameCurrent()` is removed
+* Change (toast): the toast step returns at once while no toast is queued and none was retracted in the last 60 s
 * Change (screensavers): Matrix and Rain are removed; Matrix Classic is listed as "Matrix" and is the default. The stored value stays the type number, a stored Matrix (5) or Rain (8) loads as Matrix. Menu, web page and `ddc config` show the list position 0..8
 * Change (KONAMI): the sequence opens About and no longer restores the display defaults; that is done by Display -> Reset in the menu or `ddc config reset`. Neither of its two OKs selects a menu entry or arms a gesture (the first one after the eight arrows is dropped). While ProgMode is on or a menu editor is open, it opens nothing and drops no key
 * Change (About): every key goes to About while it is shown, so no hold gesture can arm there; a direction key, OK in an About opened from the menu, or 20 s without a key closes it, and the release of the closing key is swallowed
@@ -13,7 +15,7 @@ Entries are grouped by module version; every line traces to a commit in this rep
 * Change (Doom): the raycaster column code moved to `Raycaster.cpp` and the maze is a 16x16 bitmask; the picture is unchanged
 * Feature (widgets): `OpenKNX::Ui` in `src/DisplayUi.h` draws what every widget shares: header with page dots, rows, icon rows, status card, big value, badge, bar, key hint and graph. `src/Icons/UiIcons.h` holds the 9x9 row icons, 13x13 badges and 32x32 menu icons. The line under the title is dotted and swaps its phase every minute, so each of its pixels is lit half of the time
 * Change (menu): lists show the menu name and "n/m" in the header, rows in 10 px steps and a scrollbar from 6 entries; toggles read "On" / "Off" instead of a switch bitmap
-* Change (icon menu): the root is a carousel with the 32x32 icon of the entry, half-size neighbours, name and info line. The icon comes from `src/Icons/UiIcons.h` by the label; `MenuOption::icon` is no longer drawn
+* Change (icon menu): the root is a carousel with the 32x32 icon of the entry, half-size neighbours, name and info line. The icon comes from `src/Icons/UiIcons.h` by the label; `MenuOption::icon` is removed
 * Change (text editor): neighbour characters and the groups abc ABC 123 #+= are shown; holding UP or DOWN jumps to the next or previous group. A text item can limit its length (`ip[0]`) and its characters (`dropdownOptions[0]`)
 * Change (ProgMode, OTA, hold gesture): the full-screen views use the shared header; the hold gesture names the action and shows the remaining time as "2.6 s"
 * Change: the console widget SysInfoLite (`ddc sysinfo`) is removed; the Time widget shows the time, the System-Info widget of OGM-Common the up time and the address
