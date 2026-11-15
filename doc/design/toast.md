@@ -6,14 +6,15 @@ Kurze Meldungen über dem laufenden Bild. Aufruf: `openknxDisplayModule.toast(le
 
 Aus `act()` und `DisplayToast::update()` in `src/Toast.cpp`. „wartet“: die Meldung bleibt in der Warteschlange, bis die Szene sie zeigt. „entfällt“: sie wird verworfen.
 
-| Stufe | Rotation | Menü | Editor, About, Geste | Schoner, Sleep | gedimmt | aus (Geste) | ProgMode | Update |
-|---|---|---|---|---|---|---|---|---|
-| Info | unten, 2,5 s | Banner | wartet | entfällt | entfällt | entfällt | entfällt | entfällt |
-| Ok | unten, 2,5 s | Banner | wartet | entfällt | unten | entfällt | entfällt | entfällt |
-| Warnung | unten, 5 s | Banner | wartet | weckt, dann unten | weckt, dann unten | wartet | wartet | entfällt |
-| Fehler | Karte | Karte | wartet | weckt, dann Karte | weckt, dann Karte | wartet | wartet | wartet |
+| Stufe | Rotation | Menü | Editor, About, Geste | Schoner | gedimmt | Sleep | aus (Geste) | ProgMode | Update |
+|---|---|---|---|---|---|---|---|---|---|
+| Info | unten, 2,5 s | Banner | wartet | unten | unten | entfällt | entfällt | entfällt | entfällt |
+| Ok | unten, 2,5 s | Banner | wartet | unten | unten | entfällt | entfällt | entfällt | entfällt |
+| Warnung | unten, 5 s | Banner | wartet | weckt, dann unten | weckt, dann unten | weckt, dann unten | wartet | wartet | entfällt |
+| Fehler | Karte | Karte | wartet | weckt, dann Karte | weckt, dann Karte | weckt, dann Karte | wartet | wartet | wartet |
 
-- „Editor, About, Geste“ umfasst auch andere Status-Widgets und das Startlogo, „Schoner, Sleep“ auch ein Panel, das nach Zeit ausgegangen ist; „aus (Geste)“ ist nur das per Geste ausgeschaltete Panel.
+- „Editor, About, Geste“ umfasst auch andere Status-Widgets und das Startlogo, „Sleep“ auch ein Panel, das nach Zeit ausgegangen ist; „aus (Geste)“ ist nur das per Geste ausgeschaltete Panel.
+- Info und Ok erscheinen über dem Schoner und auf dem gedimmten Panel, ohne es zu wecken; der Schoner läuft weiter.
 - Geweckt wird nur beim ersten Erscheinen. Eine Meldung, die schon zu sehen war, weckt nicht noch einmal.
 - Die Fehlerkarte bleibt, bis OK oder LEFT sie schließt. Das Loslassen dieser Taste löst danach nichts anderes aus.
 - Reihenfolge: Fehler zuerst, sonst in der Folge des Eingangs. Dieselbe erste Zeile innerhalb von 10 s zählt hoch („x3“).

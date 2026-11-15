@@ -596,9 +596,9 @@ def('t-card',g=>{SC['n-overview'].fn(g,6);toastCard(g,EV[EVI('bus-lost')])});
 def('t-warn',(g,t)=>{SC['s-sd'].fn(g,t);const k=(t%6)/6;toastB(g,EV[EVI('sd-out')],k<0.06?k/0.06:k>0.9?(1-k)/0.1:1,1)},true);
 def('t-merge',g=>{SC['n-overview'].fn(g,6);toastB(g,EV[EVI('tun')],1,3)});
 
-const CTX=[['rot','Rotation'],['menu','Menü'],['edit','Editor'],['saver','Schoner'],['dim','gedimmt'],['off','aus'],['prog','ProgMode'],['ota','Update']];
-const MX={ok:{rot:'T',menu:'B',edit:'Q',saver:'X',dim:'T',off:'X',prog:'X',ota:'X'},info:{rot:'T',menu:'B',edit:'Q',saver:'X',dim:'X',off:'X',prog:'X',ota:'X'},
- warn:{rot:'T',menu:'B',edit:'Q',saver:'W',dim:'W',off:'Q',prog:'Q',ota:'X'},err:{rot:'K',menu:'K',edit:'Q',saver:'WK',dim:'WK',off:'Q',prog:'Q',ota:'Q'}};
+const CTX=[['rot','Rotation'],['menu','Menü'],['edit','Editor'],['saver','Schoner'],['dim','gedimmt'],['sleep','Sleep'],['off','aus'],['prog','ProgMode'],['ota','Update']];
+const MX={ok:{rot:'T',menu:'B',edit:'Q',saver:'T',dim:'T',sleep:'X',off:'X',prog:'X',ota:'X'},info:{rot:'T',menu:'B',edit:'Q',saver:'T',dim:'T',sleep:'X',off:'X',prog:'X',ota:'X'},
+ warn:{rot:'T',menu:'B',edit:'Q',saver:'W',dim:'W',sleep:'W',off:'Q',prog:'Q',ota:'X'},err:{rot:'K',menu:'K',edit:'Q',saver:'WK',dim:'WK',sleep:'WK',off:'Q',prog:'Q',ota:'Q'}};
 const MXN={T:'Toast',B:'Banner',K:'Karte',Q:'wartet',X:'entfällt',W:'weckt + Toast',WK:'weckt + Karte'};
 const MXC={T:'ist',B:'ist',K:'ist',Q:'ist',X:'',W:'ist',WK:'ist'};
 document.getElementById('mxHead').innerHTML='<tr><th>Art</th>'+CTX.map(c=>`<th>${c[1]}</th>`).join('')+'</tr>';
@@ -608,7 +608,7 @@ document.getElementById('evRows').innerHTML=EV.map(e=>`<tr><td class="mono">${e.
 
 const tp={ev:EVI('bus-lost'),ctx:'rot',t0:-99};
 function starfield(g,t){for(let i=0;i<40;i++){const z=((rnd(i,1)*3+t*0.6)%3)+0.2,x=64+R((rnd(i,2)-0.5)*128/z),y=32+R((rnd(i,3)-0.5)*64/z);g.px(x,y,1)}}
-function baseScene(g,c,t){({rot:()=>SC['n-overview'].fn(g,t),menu:()=>SC['n-list'].fn(g,t),edit:()=>SC['slider'].fn(g,t),saver:()=>starfield(g,t),dim:()=>SC['n-overview'].fn(g,t),off:()=>{},prog:()=>SC['n-progmode'].fn(g,t),ota:()=>SC['n-ota'].fn(g,t)})[c]()}
+function baseScene(g,c,t){({rot:()=>SC['n-overview'].fn(g,t),menu:()=>SC['n-list'].fn(g,t),edit:()=>SC['slider'].fn(g,t),saver:()=>starfield(g,t),dim:()=>SC['n-overview'].fn(g,t),sleep:()=>{},off:()=>{},prog:()=>SC['n-progmode'].fn(g,t),ota:()=>SC['n-ota'].fn(g,t)})[c]()}
 function tpDur(ev,a){return a.indexOf('K')>=0?1e9:ev.cls==='warn'?5:2.5}
 function tpDraw(){const cv=document.getElementById('tpCv');if(!cv)return;const g=new G(),now=(performance.now()-T0)/1000,ev=EV[tp.ev],a=MX[ev.cls][tp.ctx];if(now-tp.t0>tpDur(ev,a)+1.8)tp.t0=now;const dt=now-tp.t0,dur=tpDur(ev,a);let woke=false;
   if(dt>=0&&dt<=dur&&a!=='X'&&a!=='Q'){let c=tp.ctx;if(a[0]==='W'){c='rot';woke=true}baseScene(g,c,now);const k=Math.max(0,Math.min(1,dt/0.3,(dur-dt)/0.3));const kind=a.replace('W','')||'T';
