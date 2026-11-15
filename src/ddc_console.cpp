@@ -21,7 +21,6 @@
     #include "Widgets/Pong.h"
     #include "Widgets/QRcode.h"
     #include "Widgets/Starfield.h"
-    #include "Widgets/SysInfoLite.h"
     #ifdef WIDGET_CONSOLE
         #include "Widgets/Console.h"
     #endif
@@ -79,9 +78,6 @@ void DdcConsole::registerWidgetCommands()
          }},
         {"fireworks", "Fireworks", []() -> Widget* {
              return new WidgetFireworks(10000, WidgetFlags::DefaultWidget, 10);
-         }},
-        {"sysinfo", "SysInfoLite", []() -> Widget* {
-             return new WidgetSysInfoLite(5000, WidgetFlags::DefaultWidget);
          }}};
 }
 
