@@ -184,7 +184,9 @@ void WidgetsManager::drawManagerOverlay()
 
     // The progressive column flush (_displayModule->loop()) does not reliably push this tiny
     // top-right region, so flush here. displayBuff() is incremental, so once the glyph is on
-    // screen subsequent frames diff to nothing (no flicker).
+    // screen subsequent frames diff to nothing (no flicker). With a toast over an unchanged frame the
+    // snapshot is current already, and a compose per loop would cost more than the whole diff.
+    if (_frameCurrent && _frameCurrent(d->getBuffer())) return;
     _displayModule->displayBuff();
 }
 

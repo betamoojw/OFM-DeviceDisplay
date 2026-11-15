@@ -70,6 +70,9 @@ class i2cDisplay
     void SetDisplayClockDiv(uint8_t clockdiv);   // Set the display clock division
     void SetDisplayPreCharge(uint8_t precharge); // Set the display precharge
     void displayBuff();                          // compares the buffer with the panel state and sends only the changed areas
+    /** @brief Drawn by displayBuff() into the frame for the panel; the GFX buffer and text state stay as the widget left them. */
+    using Overlay = void (*)(Adafruit_SSD1306 &d);
+    void setOverlay(Overlay overlay) { _overlay = overlay; }
     void sendCommandList(const uint8_t* bytes, uint8_t count); // command + parameters in one I2C transfer (locks Wire1)
 
     inline void __setLoopColumnMethod(bool loopColumnMethod) { __loopColumnMethod = loopColumnMethod; } // Set the loop column method
@@ -108,6 +111,8 @@ class i2cDisplay
     uint16_t _sizeDispBuff;
     uint8_t* _curDispBuffer = nullptr;  // Buffer size!
     uint8_t* _prevDispBuffer = nullptr; // Buffer size!
+    Overlay _overlay = nullptr;
+    void drawOverlay(); // runs _overlay on _curDispBuffer
 
     // Non-blocking flush: displayBuff() diffs and records dirty page/column ranges (no I2C); loop()
     // pushes at most FLUSH_PAGES_PER_LOOP dirty pages per iteration so a full-frame change never blocks.

@@ -69,6 +69,7 @@ class DdcConsole
     void logFramebufferBase64(); // "ddc screenshot b64": raw framebuffer as base64 (exact, for tooling)
     void logMemoryInfo();       // free heap now / min-ever / total (cross-platform)
     bool processQRCommand(const std::string& command);
+    bool processToastCommand(const std::string& args); // after "ddc toast "
     // "ddc config" family: show all settings (id/value), reset to defaults, or set one by id.
     bool processConfigCommand(const std::string& command);
 

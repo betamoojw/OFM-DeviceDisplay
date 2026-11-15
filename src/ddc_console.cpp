@@ -10,7 +10,9 @@
     #include "Settings/SettingsIds.h" // id table shared with the web settings page
     #include "WidgetsManager.h"
     #include "devices/i2cDisplay.h"
-    #include <cstdlib> // strtol for "ddc config set"
+    #include <algorithm> // std::replace for "ddc toast"
+    #include <cstdlib>   // strtol for "ddc config set"
+    #include <cstring>   // strchr for "ddc toast"
 
     #include "Widget.h"
     #include "Widgets/Clock.h"
@@ -135,6 +137,9 @@ bool DdcConsole::processCommand(const std::string& command)
     if (command.compare(4, 3, "qr ") == 0)
         return processQRCommand(command);
 
+    if (command.compare(4, 6, "toast ") == 0)
+        return processToastCommand(command.substr(10));
+
     #ifdef WIDGET_CONSOLE
     if (command.compare(4, 2, "c ") == 0)
         return processConsoleCommand(command);
@@ -162,6 +167,31 @@ bool DdcConsole::processCommand(const std::string& command)
 bool DdcConsole::processListCommand()
 {
     _widgetManager->logWidgetQueue();
+    return true;
+}
+
+/**
+ * @brief "ddc toast <i|o|w|e> <text>": shows a toast, '|' starts the second line.
+ */
+bool DdcConsole::processToastCommand(const std::string& args)
+{
+    #ifdef OPENKNX_DISPLAY_TOAST_LOG
+    if (args == "log")
+    {
+        openknxDisplayModule.printToastLog();
+        return true;
+    }
+    #endif
+    static const char Levels[] = "iowe";
+    const char* level = (args.size() > 2 && args[0] != '\0' && args[1] == ' ') ? strchr(Levels, args[0]) : nullptr;
+    if (!level)
+    {
+        logInfoP("usage: ddc toast <i|o|w|e> <text>, '|' = second line");
+        return true;
+    }
+    std::string text = args.substr(2);
+    std::replace(text.begin(), text.end(), '|', '\n');
+    openknxDisplayModule.toastText(static_cast<ToastLevel>(level - Levels), text.c_str());
     return true;
 }
 
@@ -1068,6 +1098,7 @@ void DdcConsole::showHelp()
     openknx.console.printHelpLine("ddc key <dir> [long]", "Press a button: up|down|left|right|ok");
     openknx.console.printHelpLine("ddc key <dir> press|release", "Hold a button (gestures)");
     openknx.console.printHelpLine("ddc home", "Force home: close menu/overlays, reset latches");
+    openknx.console.printHelpLine("ddc toast <i|o|w|e> <text>", "Show a toast, '|' = second line");
 
     openknx.logger.log("--- Widget Commands (ddc <widget> s|r) ---");
     for (const auto& wc : _widgetCommands)

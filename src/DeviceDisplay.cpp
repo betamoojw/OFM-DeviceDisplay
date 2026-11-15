@@ -1,5 +1,6 @@
 #ifdef DEVICE_DISPLAY_MODULE
     #include "DeviceDisplay.h"
+    #include "Icons/UiIcons.h"
     #include "ddc_console.h"
     #include "Devices/ButtonManager.h"
     #include "Devices/i2cDisplay.h"
@@ -50,6 +51,8 @@ static FSFILE s_screenshotFile;
     #endif
 
 DeviceDisplay openknxDisplayModule;
+
+static_assert(static_cast<uint8_t>(ScreenSaverType::Off) == DisplayToast::SaverOff, "burn-in check uses the Off type value");
 
 #if defined(ARDUINO_ARCH_ESP32)
 // Enlarge the ESP32 loopTask stack (default 8 KB): the eager display-root menu build overflows it.
@@ -131,8 +134,12 @@ void DeviceDisplay::init()
              _displayModule->lcdSettings.height,
              _displayModule->lcdSettings.i2cadress);
 
+    // Toasts go into every frame the panel gets; no widget draws or knows them.
+    _displayModule->setOverlay([](Adafruit_SSD1306& d) { openknxDisplayModule.composeToast(d); });
+
     // Configure WidgetManager
     _widgetManager->setDisplayModule(_displayModule);
+    _widgetManager->setFrameCurrent([](const uint8_t* gfx) { return openknxDisplayModule.toastFrameCurrent(gfx); });
     _widgetManager->setIdleTimeout(10000);
 
     PowerSaveConfig config;
@@ -648,7 +655,7 @@ void DeviceDisplay::wireMenuCallbacks()
         applyWidgetSettings();
         _settingsStore.requestSave(true);
         if (_menuWidget) _menuWidget->rebuild();
-        showToast("Display reset");
+        toast(ToastLevel::Ok, nullptr, "Display reset");
         logInfoP("Display settings reset to defaults");
     });
 
@@ -677,7 +684,7 @@ void DeviceDisplay::wireMenuCallbacks()
         _settingsStore.setPreChargeIdx(_pendDispPrechargeIdx);
         _settingsStore.setRefreshIdx(_pendDispRefreshIdx);
         _settingsStore.requestSave(true);
-        showToast("Panel saved");
+        toast(ToastLevel::Ok, nullptr, "Panel saved");
         logInfoP("Display tuning saved: rotate=%u pre=%u refresh=%u",
                  _pendDispRotate ? 1u : 0u, _pendDispPrechargeIdx, _pendDispRefreshIdx);
     });
@@ -884,7 +891,11 @@ void DeviceDisplay::loop(bool configured)
     // OTA overlay (SYSTEM priority; overrides ProgMode et al. during a firmware update)
     handleOTA();
 
-    // Update display (only when CPU time available). A screenshot toast briefly holds the screen.
+    // Burn-in notice, compared only outside a menu editor (a slider passes through "never" on its way).
+    if (!(_menuWidget && _menuWidget->editorActive())) _toast.watchBurnIn(_settingsStore.settings(), millis());
+    toastTick();
+
+    // Update display (only when CPU time available).
 #ifdef DDISP_HAS_NETWORK_MODULE
     if (openknxNetwork.otaActive())
     {
@@ -896,18 +907,123 @@ void DeviceDisplay::loop(bool configured)
 #endif
     if (openknx.freeLoopTime())
     {
-        if (_toastUntil != 0 && millis() < _toastUntil)
+        // A widget may redraw only on change (the menu): compose here whenever the toast moves, changes or leaves.
+        const uint32_t key = _toast.frameKey(millis());
+        if (key != _toastKey) _displayModule->displayBuff();
+        _toastKey = key;
+        _widgetManager->loop();
+    }
+}
+
+/**
+ * @brief Scene for the toast rules, from the most to the least blocking state.
+ */
+DisplayToast::Scene DeviceDisplay::toastScene() const
+{
+    #ifdef DDISP_HAS_NETWORK_MODULE
+    if (openknxNetwork.otaActive()) return DisplayToast::Scene::Ota;
+    #endif
+    if (knx.progMode()) return DisplayToast::Scene::Prog;
+    // Power state before the widget state: the manager keeps its last state while the panel is dark.
+    if (_widgetManager->isForcedOff()) return DisplayToast::Scene::Off;
+    const PowerSaveMode mode = _widgetManager->getPowerSaveMode();
+    if (mode == PowerSaveMode::Screensaver || mode == PowerSaveMode::Sleep || mode == PowerSaveMode::Off)
+        return DisplayToast::Scene::Dark;
+    const WidgetManagerState state = _widgetManager->getState();
+    const bool gestureShown = _gestureOverlay && (_gestureOverlay->getAction() & DisplayEnabled);
+    if (_aboutActive || gestureShown || (_menuWidget && _menuWidget->editorActive()) ||
+        state == WidgetManagerState::Priority || state == WidgetManagerState::Startup)
+        return DisplayToast::Scene::Busy;
+    if (mode == PowerSaveMode::Dimmed) return DisplayToast::Scene::Dimmed;
+    return state == WidgetManagerState::Background ? DisplayToast::Scene::Menu : DisplayToast::Scene::Rotation;
+}
+
+/**
+ * @brief Advances the toast queue; a Warn or Error on a dimmed or dark panel wakes it through the user-input path.
+ */
+void DeviceDisplay::toastTick()
+{
+    if (!_widgetManager) return;
+    const uint32_t now = millis();
+    if (_toast.update(toastScene(), now))
+    {
+        _widgetManager->userInteraction(); // restarts the inactivity timers, ends dim / screensaver / sleep
+        _toast.update(toastScene(), now);
+    }
+}
+
+/** @brief One word into the hash (MurmurHash3 x86_32 block step). */
+static inline uint32_t hashWord(uint32_t h, uint32_t k)
+{
+    k *= 0xcc9e2d51u;
+    k = ((k << 15) | (k >> 17)) * 0x1b873593u;
+    h ^= k;
+    return ((h << 13) | (h >> 19)) * 5u + 0xe6546b64u;
+}
+
+/** @brief MurmurHash3 x86_32 (seed 0) over the frame; len is a multiple of 4 (128 x 64 / 8 = 1024). */
+static uint32_t frameHash(const uint8_t* buf, size_t len)
+{
+    uint32_t h = 0, k;
+    if ((reinterpret_cast<uintptr_t>(buf) & 3) == 0)
+    {
+        const uint8_t* p = static_cast<const uint8_t*>(__builtin_assume_aligned(buf, 4));
+        for (size_t i = 0; i + 4 <= len; i += 4)
         {
-            // Hold the toast: skip widget rendering, but keep pushing it to the panel - the
-            // incremental page flush lives in _widgetManager->loop(), which we skip here.
-            _displayModule->loop();
-        }
-        else
-        {
-            if (_toastUntil != 0) _toastUntil = 0; // toast expired -> resume normal rendering
-            _widgetManager->loop();
+            memcpy(&k, p + i, 4); // one word load
+            h = hashWord(h, k);
         }
     }
+    else
+        for (size_t i = 0; i + 4 <= len; i += 4)
+        {
+            memcpy(&k, buf + i, 4);
+            h = hashWord(h, k);
+        }
+    h ^= static_cast<uint32_t>(len);
+    h = (h ^ (h >> 16)) * 0x85ebca6bu;
+    h = (h ^ (h >> 13)) * 0xc2b2ae35u;
+    return h ^ (h >> 16);
+}
+
+/**
+ * @brief Overlay step of every displayBuff(): draws the toast into the snapshot and notes what it was drawn over.
+ */
+void DeviceDisplay::composeToast(Adafruit_SSD1306& d)
+{
+    const uint32_t now = millis();
+    _composedKey = _toast.frameKey(now);
+    if (_composedKey == 0) return;
+    _composedHash = frameHash(d.getBuffer(), static_cast<size_t>(d.width()) * d.height() / 8);
+    _toast.draw(d, now);
+}
+
+/**
+ * @brief True when a displayBuff() of gfx now would compose the same frame as the last one (toast shown, same key, same frame).
+ */
+bool DeviceDisplay::toastFrameCurrent(const uint8_t* gfx)
+{
+    if (_composedKey == 0 || !_displayModule || !_displayModule->display) return false;
+    const Adafruit_SSD1306& d = *_displayModule->display;
+    return _toast.frameKey(millis()) == _composedKey &&
+           frameHash(gfx, static_cast<size_t>(d.width()) * d.height() / 8) == _composedHash;
+}
+
+void DeviceDisplay::toast(ToastLevel level, const uint8_t* icon9, const char* line1, const char* line2, void (*open)())
+{
+    _toast.post(level, icon9, line1, line2, open, millis());
+}
+
+void DeviceDisplay::toastText(ToastLevel level, const char* text)
+{
+    _toast.postText(level, nullptr, text, millis());
+}
+
+void DeviceDisplay::retractToast(const char* line1)
+{
+    // OK or LEFT held on a card that goes: its release must not open the menu or step the rotation.
+    const uint8_t armed = _toast.armedKeys();
+    if (_toast.retract(line1, millis())) _swallowMask |= static_cast<uint8_t>(armed & ~_toast.armedKeys());
 }
 
 void DeviceDisplay::forceHome()
@@ -919,6 +1035,8 @@ void DeviceDisplay::forceHome()
     // measure a state nobody asked for.
     _swallowMask = 0;
     _konamiPos = 0;
+    _toast.clearKeys();
+    _toast.closeCard(false); // a shown error card closes like with <, without its open target
 
     // Disarm any half-held gesture so the engine folds back to Idle and can re-arm.
     _gestureEngine.endHold();
@@ -1032,6 +1150,8 @@ void DeviceDisplay::handleButtonEvent(const ButtonEvent& event)
 
     if (isPress)
     {
+        // OK and LEFT pressed on the error card close it on release; a hold still runs its gesture.
+        _toast.pressKey(bit, event.type == ButtonType::SELECT || event.type == ButtonType::LEFT);
         armGesture(event.type);
 
         // Wake the display on any press even if nothing is armed / no widget is active.
@@ -1043,6 +1163,8 @@ void DeviceDisplay::handleButtonEvent(const ButtonEvent& event)
     }
 
     // Release event (RELEASE / LONG_PRESS / VERY_LONG_PRESS).
+    const bool cardKey = _toast.releaseKey(bit);
+
     // Only the button that armed the gesture ends it; a different button's release cannot.
     bool gestureConsumed = false;
     if (_gestureButtonArmed && event.type == _heldGestureButton)
@@ -1070,6 +1192,13 @@ void DeviceDisplay::handleButtonEvent(const ButtonEvent& event)
     // Genuine short press on a gesture-armed button (bar never ran): do the deferred wake now.
     if (releaseOfArmedGesture)
         _widgetManager->userInteraction();
+
+    // The error card takes OK and LEFT, also held (a held LEFT does not close the menu under it); other keys go on below it.
+    if (cardKey && _toast.closeCard(event.type == ButtonType::SELECT))
+    {
+        _widgetManager->userInteraction();
+        return;
+    }
 
     // HOLDING LEFT closes the whole menu from anywhere; a short LEFT still navigates. HOLDING UP/DOWN in the
     // text editor jumps to the next/previous character group; elsewhere it stays a short press.
@@ -1244,7 +1373,7 @@ void DeviceDisplay::screenshotTick()
         {
             _shotPending = false;
             if (!_shotFrozen || _shotW == 0 || _shotH == 0) { _shotState = ShotState::Failed; break; }
-            if (!sdCardModule.isMounted()) { showToast("No SD card"); _shotFrozen = false; break; }
+            if (!sdCardModule.isMounted()) { toast(ToastLevel::Warn, OpenKNX::Ui::kRowSd, "No SD card"); _shotFrozen = false; break; }
 
             char path[28];
             bool found = false;
@@ -1274,15 +1403,19 @@ void DeviceDisplay::screenshotTick()
             _shotState = ShotState::Done;
             break;
         case ShotState::Done:
-            showToast(std::string("Screenshot:\n") + _shotPath);
+        {
+            char text[48];
+            snprintf(text, sizeof(text), "Screenshot saved\n%s", _shotPath.c_str());
+            toastText(ToastLevel::Ok, text);
             logInfoP("Screenshot saved: %s", _shotPath.c_str());
             _shotFrozen = false;
             _shotState = ShotState::Idle;
             break;
+        }
         case ShotState::Failed:
         default:
             if (s_screenshotFile) s_screenshotFile.close();
-            showToast("Screenshot failed");
+            toast(ToastLevel::Warn, nullptr, "Screenshot failed");
             logErrorP("Screenshot failed (no SD / open / write)");
             _shotFrozen = false;
             _shotState = ShotState::Idle;
@@ -1292,28 +1425,8 @@ void DeviceDisplay::screenshotTick()
     // No SD module in this build: nowhere to write. Consume the request with a toast.
     _shotPending = false;
     _shotFrozen = false;
-    showToast("No SD module");
+    toast(ToastLevel::Warn, OpenKNX::Ui::kRowSd, "No SD module");
 #endif
-}
-
-void DeviceDisplay::showToast(const std::string& msg)
-{
-    _toastMsg = msg;
-    _toastUntil = millis() + SHOT_TOAST_MS;
-    if (_toastUntil == 0) _toastUntil = 1; // guard the "inactive" sentinel across a millis() wrap
-    drawToast();
-}
-
-void DeviceDisplay::drawToast()
-{
-    if (!_displayModule || !_displayModule->display) return;
-    Adafruit_SSD1306* d = _displayModule->display;
-    d->clearDisplay();
-    d->setTextSize(1);
-    d->setTextColor(WHITE);
-    d->setCursor(0, 0);
-    d->print(_toastMsg.c_str());
-    _displayModule->displayBuff();
 }
 
 /**

@@ -23,6 +23,7 @@
     #include "Menu/MenuRegistry.h"
     #include "OpenKNX.h"
     #include "Settings/DisplaySettingsStore.h"
+    #include "Toast.h"
     #include "WidgetsManager.h"
 
 class WidgetsManager;
@@ -160,11 +161,10 @@ class DeviceDisplay : public OpenKNX::Module
     // --- Screenshot (RIGHT-hold gesture / "ddc screenshot") -------------------------------------
     // The gesture callback and console command only REQUEST; the SD write runs from loop() (a
     // blocking write in a button callback reboots the RP2040). The CLEAN framebuffer is frozen into
-    // _shotBuf BEFORE the confirm overlay appears, so the saved image never shows the overlay/toast.
+    // _shotBuf BEFORE the confirm overlay appears, so the saved image never shows the overlay.
     enum class ShotState : uint8_t { Idle, Rows, Close, Done, Failed };
     static constexpr uint16_t SHOT_MAX_BYTES = 1024;  // 128 * 64 / 8
     static constexpr uint16_t SHOT_ROWS_PER_TICK = 8; // chunked write, well under the loop budget
-    static constexpr uint32_t SHOT_TOAST_MS = 1800;   // on-screen confirmation hold time
     uint8_t _shotBuf[SHOT_MAX_BYTES] = {0};           // frozen framebuffer snapshot (no heap)
     ShotState _shotState = ShotState::Idle;
     bool _shotPending = false;                        // a request is latched (snapshot already frozen)
@@ -172,12 +172,19 @@ class DeviceDisplay : public OpenKNX::Module
     uint16_t _shotW = 0, _shotH = 0, _shotRow = 0;
     uint16_t _nextShot = 0;                           // cached next /screenshot_NNN.bmp index
     std::string _shotPath;                            // current target path (for the toast)
-    std::string _toastMsg;                            // transient on-screen message
-    uint32_t _toastUntil = 0;                         // millis() deadline for the toast (0 = none)
 
     void captureFramebuffer();              // freeze the live framebuffer into _shotBuf
     void screenshotTick();                  // loop-driven writer FSM
-    void drawToast();                       // render the current toast
+
+    // Toasts: queue + forms, drawn by i2cDisplay into the frame for the panel.
+    DisplayToast _toast;
+    uint32_t _toastKey = 0;     // DisplayToast::frameKey() at the last check in loop()
+    uint32_t _composedKey = 0;  // DisplayToast::frameKey() of the last composed frame, 0 = no toast in it
+    uint32_t _composedHash = 0; // hash of the widget frame that toast was drawn over
+    void composeToast(Adafruit_SSD1306& d);
+    bool toastFrameCurrent(const uint8_t* gfx);
+    DisplayToast::Scene toastScene() const;
+    void toastTick();
 
     // Internal functions
     void handleProgMode();
@@ -229,9 +236,21 @@ class DeviceDisplay : public OpenKNX::Module
     DeviceDisplay();
     ~DeviceDisplay();
 
-    // Brief on-screen message (held SHOT_TOAST_MS). Public so other modules (e.g. OFM-SDCard format
-    // feedback) can surface a status message on the display.
-    void showToast(const std::string& msg);
+    /**
+     * @brief Shows a short message over the current screen; the lines are copied (21 characters each).
+     * @param icon9 9x9 row icon, nullptr = icon of the level
+     * @param open target for OK on an error card (Error only), nullptr = OK closes
+     */
+    void toast(ToastLevel level, const uint8_t* icon9, const char* line1, const char* line2 = nullptr, void (*open)() = nullptr);
+    /** @brief Text split at the first '\n'; a second line wider than the toast keeps its end. */
+    void toastText(ToastLevel level, const char* text);
+    /** @brief Removes the toast with this line1, on screen or waiting: its cause is gone. */
+    void retractToast(const char* line1);
+    /** @brief Info toast from text (see toastText()). */
+    void showToast(const char* msg) { toastText(ToastLevel::Info, msg); }
+    #ifdef OPENKNX_DISPLAY_TOAST_LOG
+    void printToastLog() const { _toast.printLog(); }
+    #endif
 
     // True while a button is held (a gesture hold is armed). Lets a long background job (e.g. the SD
     // Low-Level format) yield for that moment so the gesture countdown overlay animates smoothly.

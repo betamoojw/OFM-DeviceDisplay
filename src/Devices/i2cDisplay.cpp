@@ -482,6 +482,7 @@ void i2cDisplay::displayBuff()
     // Snapshot + diff only, no I2C; loop() pushes the pixels. prev is synced per page only when that
     // page is actually sent (in loop()), so the diff always reflects what is physically on-screen.
     memcpy(_curDispBuffer, display->getBuffer(), _sizeDispBuff);
+    if (_overlay) drawOverlay();
     const int pages = lcdSettings.height / 8;
     const int width = lcdSettings.width;
     for (int page = 0; page < pages && page < MAX_PAGES; page++)
@@ -511,6 +512,56 @@ void i2cDisplay::displayBuff()
             }
         }
     }
+}
+
+namespace
+{
+    /** @brief Reaches the protected frame pointer and text state of the GFX object (pointer to member, no copy). */
+    struct PanelAccess : Adafruit_SSD1306
+    {
+        struct Text
+        {
+            int16_t x, y;
+            uint16_t fg, bg;
+            uint8_t sx, sy;
+            bool wrap, cp437;
+            GFXfont *font;
+        };
+        static uint8_t *&frame(Adafruit_SSD1306 &d) { return d.*(&PanelAccess::buffer); }
+        static Text save(Adafruit_SSD1306 &d)
+        {
+            return {d.*(&PanelAccess::cursor_x), d.*(&PanelAccess::cursor_y), d.*(&PanelAccess::textcolor),
+                    d.*(&PanelAccess::textbgcolor), d.*(&PanelAccess::textsize_x), d.*(&PanelAccess::textsize_y),
+                    d.*(&PanelAccess::wrap), d.*(&PanelAccess::_cp437), d.*(&PanelAccess::gfxFont)};
+        }
+        static void restore(Adafruit_SSD1306 &d, const Text &t)
+        {
+            d.*(&PanelAccess::cursor_x) = t.x;
+            d.*(&PanelAccess::cursor_y) = t.y;
+            d.*(&PanelAccess::textcolor) = t.fg;
+            d.*(&PanelAccess::textbgcolor) = t.bg;
+            d.*(&PanelAccess::textsize_x) = t.sx;
+            d.*(&PanelAccess::textsize_y) = t.sy;
+            d.*(&PanelAccess::wrap) = t.wrap;
+            d.*(&PanelAccess::_cp437) = t.cp437;
+            d.*(&PanelAccess::gfxFont) = t.font;
+        }
+    };
+} // namespace
+
+/**
+ * @brief Draws the overlay into the snapshot: the GFX calls write to _curDispBuffer for this one call, so the
+ *        widget's own buffer keeps its frame and a widget that redraws only on change loses nothing.
+ */
+void i2cDisplay::drawOverlay()
+{
+    const PanelAccess::Text text = PanelAccess::save(*display);
+    uint8_t *&frame = PanelAccess::frame(*display);
+    uint8_t *const own = frame;
+    frame = _curDispBuffer;
+    _overlay(*display);
+    frame = own;
+    PanelAccess::restore(*display, text);
 }
 
 /**

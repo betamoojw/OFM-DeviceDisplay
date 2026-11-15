@@ -168,6 +168,7 @@ class WidgetsManager // Manages the widget queue and state machine
     // interaction time and transitions to the deepest configured off/sleep mode so it STAYS off
     // until a real interaction (any button -> userInteraction/wakeUpDisplay).
     void forceDisplayOff();
+    bool isForcedOff() const { return _forcedOff; }
 
     // Linear 0.0f..1.0f rotation progress for the currently rotating DefaultWidget; returns
     // ROTATION_PROGRESS_NONE when there is no time-based rotation (background/priority/screensaver
@@ -213,6 +214,10 @@ class WidgetsManager // Manages the widget queue and state machine
     // corner on EVERY rotation widget, because an active busmonitor refuses tunnel connects and
     // that has to be visible wherever the user happens to be looking.
     void setBusMonActive(bool active) { _busMonActive = active; }
+
+    /** @brief Asked before the corner flush with the widget frame: true = the composed snapshot already matches it. */
+    using FrameCurrent = bool (*)(const uint8_t* gfx);
+    void setFrameCurrent(FrameCurrent check) { _frameCurrent = check; }
 
     // Manual page flipping of the current widget. Wraps around; with auto paging the page keeps its
     // per-page slice, without it the widget gets its full display time again. No-op for single-page.
@@ -263,6 +268,7 @@ class WidgetsManager // Manages the widget queue and state machine
 
     bool _autoPagingEnabled = false;
     bool _busMonActive = false;
+    FrameCurrent _frameCurrent = nullptr;
 
     // Index (into _defaultOrder) of the currently grabbed widget in reorder mode, -1 if none.
     int _grabIndex = -1;
