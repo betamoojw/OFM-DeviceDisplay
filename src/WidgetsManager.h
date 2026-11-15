@@ -221,10 +221,6 @@ class WidgetsManager // Manages the widget queue and state machine
     // that has to be visible wherever the user happens to be looking.
     void setBusMonActive(bool active) { _busMonActive = active; }
 
-    /** @brief Asked before the corner flush with the widget frame: true = the composed snapshot already matches it. */
-    using FrameCurrent = bool (*)(const uint8_t* gfx);
-    void setFrameCurrent(FrameCurrent check) { _frameCurrent = check; }
-
     // Manual page flipping of the current widget. Wraps around; with auto paging the page keeps its
     // per-page slice, without it the widget gets its full display time again. No-op for single-page.
     void pageUp();
@@ -276,7 +272,6 @@ class WidgetsManager // Manages the widget queue and state machine
     bool _busMonActive = false;
     Widget* _pinned = nullptr; // see pin()
     uint32_t _pinKeyAt = 0;    // millis() of the last navigation key while pinned, 0 = none: the pin takes the view
-    FrameCurrent _frameCurrent = nullptr;
 
     // Index (into _defaultOrder) of the currently grabbed widget in reorder mode, -1 if none.
     int _grabIndex = -1;

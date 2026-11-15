@@ -72,7 +72,15 @@ class i2cDisplay
     void displayBuff();                          // compares the buffer with the panel state and sends only the changed areas
     /** @brief Drawn by displayBuff() into the frame for the panel; the GFX buffer and text state stay as the widget left them. */
     using Overlay = void (*)(Adafruit_SSD1306 &d);
-    void setOverlay(Overlay overlay) { _overlay = overlay; }
+    /** @brief What the overlay would draw now: 0 = nothing, any other value changes whenever its pixels change.
+     *         The overlay is drawn only while the key function returns non-zero; without one it is never drawn. */
+    using OverlayKey = uint32_t (*)();
+    void setOverlay(Overlay overlay, OverlayKey key)
+    {
+        _overlay = overlay;
+        _overlayKey = key;
+        _composed = false;
+    }
     void sendCommandList(const uint8_t* bytes, uint8_t count); // command + parameters in one I2C transfer (locks Wire1)
 
     inline void __setLoopColumnMethod(bool loopColumnMethod) { __loopColumnMethod = loopColumnMethod; } // Set the loop column method
@@ -112,7 +120,12 @@ class i2cDisplay
     uint8_t* _curDispBuffer = nullptr;  // Buffer size!
     uint8_t* _prevDispBuffer = nullptr; // Buffer size!
     Overlay _overlay = nullptr;
+    OverlayKey _overlayKey = nullptr;
     void drawOverlay(); // runs _overlay on _curDispBuffer
+    // The snapshot in _curDispBuffer: overlay key and, under an overlay, the hash of the GFX frame it was drawn over.
+    bool _composed = false;
+    uint32_t _composedKey = 0;
+    uint32_t _composedHash = 0;
 
     // Non-blocking flush: displayBuff() diffs and records dirty page/column ranges (no I2C); loop()
     // pushes at most FLUSH_PAGES_PER_LOOP dirty pages per iteration so a full-frame change never blocks.

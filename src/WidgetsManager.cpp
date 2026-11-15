@@ -128,8 +128,8 @@ void WidgetsManager::loop()
             break;
     }
 
-    // Manager-owned corner (x >= w-12) plus the dwell marker, drawn on top of the current
-    // widget's buffer before the incremental flush pushes the changed columns to the OLED.
+    // Manager-owned corner (x >= w-12), drawn on top of the current widget's buffer before the
+    // incremental flush pushes the changed columns to the OLED.
     drawManagerOverlay();
 
     // 9. Always update display
@@ -186,10 +186,7 @@ void WidgetsManager::drawManagerOverlay()
     }
 
     // The progressive column flush (_displayModule->loop()) does not reliably push this tiny
-    // top-right region, so flush here. displayBuff() is incremental, so once the glyph is on
-    // screen subsequent frames diff to nothing (no flicker). With a toast over an unchanged frame the
-    // snapshot is current already, and a compose per loop would cost more than the whole diff.
-    if (_frameCurrent && _frameCurrent(d->getBuffer())) return;
+    // top-right region, so flush here. displayBuff() skips snapshot and diff when frame and overlay are unchanged.
     _displayModule->displayBuff();
 }
 

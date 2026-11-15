@@ -178,11 +178,10 @@ class DeviceDisplay : public OpenKNX::Module
 
     // Toasts: queue + forms, drawn by i2cDisplay into the frame for the panel.
     DisplayToast _toast;
-    uint32_t _toastKey = 0;     // DisplayToast::frameKey() at the last check in loop()
-    uint32_t _composedKey = 0;  // DisplayToast::frameKey() of the last composed frame, 0 = no toast in it
-    uint32_t _composedHash = 0; // hash of the widget frame that toast was drawn over
+    uint32_t _toastKey = 0;   // DisplayToast::frameKey() at the last check in loop()
+    uint32_t _overlayNow = 0; // millis() of the last overlay key, used by the draw step
+    uint32_t toastOverlayKey();
     void composeToast(Adafruit_SSD1306& d);
-    bool toastFrameCurrent(const uint8_t* gfx);
     DisplayToast::Scene toastScene() const;
     void toastTick();
 

@@ -135,11 +135,11 @@ void DeviceDisplay::init()
              _displayModule->lcdSettings.i2cadress);
 
     // Toasts go into every frame the panel gets; no widget draws or knows them.
-    _displayModule->setOverlay([](Adafruit_SSD1306& d) { openknxDisplayModule.composeToast(d); });
+    _displayModule->setOverlay([](Adafruit_SSD1306& d) { openknxDisplayModule.composeToast(d); },
+                               []() { return openknxDisplayModule.toastOverlayKey(); });
 
     // Configure WidgetManager
     _widgetManager->setDisplayModule(_displayModule);
-    _widgetManager->setFrameCurrent([](const uint8_t* gfx) { return openknxDisplayModule.toastFrameCurrent(gfx); });
     _widgetManager->setIdleTimeout(10000);
 
     PowerSaveConfig config;
@@ -952,61 +952,21 @@ void DeviceDisplay::toastTick()
     }
 }
 
-/** @brief One word into the hash (MurmurHash3 x86_32 block step). */
-static inline uint32_t hashWord(uint32_t h, uint32_t k)
+/**
+ * @brief Overlay key for displayBuff(): what the toast draws now, 0 = nothing; the draw step uses the same time.
+ */
+uint32_t DeviceDisplay::toastOverlayKey()
 {
-    k *= 0xcc9e2d51u;
-    k = ((k << 15) | (k >> 17)) * 0x1b873593u;
-    h ^= k;
-    return ((h << 13) | (h >> 19)) * 5u + 0xe6546b64u;
-}
-
-/** @brief MurmurHash3 x86_32 (seed 0) over the frame; len is a multiple of 4 (128 x 64 / 8 = 1024). */
-static uint32_t frameHash(const uint8_t* buf, size_t len)
-{
-    uint32_t h = 0, k;
-    if ((reinterpret_cast<uintptr_t>(buf) & 3) == 0)
-    {
-        const uint8_t* p = static_cast<const uint8_t*>(__builtin_assume_aligned(buf, 4));
-        for (size_t i = 0; i + 4 <= len; i += 4)
-        {
-            memcpy(&k, p + i, 4); // one word load
-            h = hashWord(h, k);
-        }
-    }
-    else
-        for (size_t i = 0; i + 4 <= len; i += 4)
-        {
-            memcpy(&k, buf + i, 4);
-            h = hashWord(h, k);
-        }
-    h ^= static_cast<uint32_t>(len);
-    h = (h ^ (h >> 16)) * 0x85ebca6bu;
-    h = (h ^ (h >> 13)) * 0xc2b2ae35u;
-    return h ^ (h >> 16);
+    _overlayNow = millis();
+    return _toast.frameKey(_overlayNow);
 }
 
 /**
- * @brief Overlay step of every displayBuff(): draws the toast into the snapshot and notes what it was drawn over.
+ * @brief Overlay step of displayBuff(): draws the toast into the snapshot, at the time its key was taken.
  */
 void DeviceDisplay::composeToast(Adafruit_SSD1306& d)
 {
-    const uint32_t now = millis();
-    _composedKey = _toast.frameKey(now);
-    if (_composedKey == 0) return;
-    _composedHash = frameHash(d.getBuffer(), static_cast<size_t>(d.width()) * d.height() / 8);
-    _toast.draw(d, now);
-}
-
-/**
- * @brief True when a displayBuff() of gfx now would compose the same frame as the last one (toast shown, same key, same frame).
- */
-bool DeviceDisplay::toastFrameCurrent(const uint8_t* gfx)
-{
-    if (_composedKey == 0 || !_displayModule || !_displayModule->display) return false;
-    const Adafruit_SSD1306& d = *_displayModule->display;
-    return _toast.frameKey(millis()) == _composedKey &&
-           frameHash(gfx, static_cast<size_t>(d.width()) * d.height() / 8) == _composedHash;
+    _toast.draw(d, _overlayNow);
 }
 
 void DeviceDisplay::toast(ToastLevel level, const uint8_t* icon9, const char* line1, const char* line2, void (*open)())

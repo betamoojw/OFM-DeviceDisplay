@@ -4,6 +4,62 @@
 
 #define SSD1306_NO_SPLASH // Suppress the internal display splash screen
 
+namespace
+{
+    /** @brief One word into the hash (MurmurHash3 x86_32 block step). */
+    inline uint32_t hashWord(uint32_t h, uint32_t k)
+    {
+        k *= 0xcc9e2d51u;
+        k = ((k << 15) | (k >> 17)) * 0x1b873593u;
+        h ^= k;
+        return ((h << 13) | (h >> 19)) * 5u + 0xe6546b64u;
+    }
+
+    /** @brief MurmurHash3 x86_32 (seed 0) over the whole words of a frame (128x64 and 128x32 have no tail). */
+    uint32_t frameHash(const uint8_t *buf, size_t len)
+    {
+        uint32_t h = 0, k;
+        if ((reinterpret_cast<uintptr_t>(buf) & 3) == 0)
+        {
+            const uint8_t *p = static_cast<const uint8_t *>(__builtin_assume_aligned(buf, 4));
+            for (size_t i = 0; i + 4 <= len; i += 4)
+            {
+                memcpy(&k, p + i, 4); // one word load
+                h = hashWord(h, k);
+            }
+        }
+        else
+            for (size_t i = 0; i + 4 <= len; i += 4)
+            {
+                memcpy(&k, buf + i, 4);
+                h = hashWord(h, k);
+            }
+        h ^= static_cast<uint32_t>(len);
+        h = (h ^ (h >> 16)) * 0x85ebca6bu;
+        h = (h ^ (h >> 13)) * 0xc2b2ae35u;
+        return h ^ (h >> 16);
+    }
+
+    /** @brief True when both frames hold the same bytes; compares word by word when both are aligned. */
+    bool sameFrame(const uint8_t *a, const uint8_t *b, size_t len)
+    {
+        if (((reinterpret_cast<uintptr_t>(a) | reinterpret_cast<uintptr_t>(b)) & 3) != 0) return memcmp(a, b, len) == 0;
+        const uint8_t *pa = static_cast<const uint8_t *>(__builtin_assume_aligned(a, 4));
+        const uint8_t *pb = static_cast<const uint8_t *>(__builtin_assume_aligned(b, 4));
+        uint32_t x, y;
+        size_t i = 0;
+        for (; i + 4 <= len; i += 4)
+        {
+            memcpy(&x, pa + i, 4);
+            memcpy(&y, pb + i, 4);
+            if (x != y) return false;
+        }
+        for (; i < len; i++)
+            if (pa[i] != pb[i]) return false;
+        return true;
+    }
+} // namespace
+
 /**
  * @brief Construct a new i2c Display::i2c Display object and initialize the display settings.
  *
@@ -479,10 +535,19 @@ void i2cDisplay::displayBuff()
 {
     if (!_curDispBuffer || !_prevDispBuffer || !display) return;
 
+    // Same GFX frame under the same overlay as the snapshot: its dirty ranges are recorded already.
+    const uint8_t *gfx = display->getBuffer();
+    const uint32_t key = _overlay && _overlayKey ? _overlayKey() : 0;
+    const uint32_t hash = key ? frameHash(gfx, _sizeDispBuff) : 0;
+    if (_composed && key == _composedKey && (key ? hash == _composedHash : sameFrame(gfx, _curDispBuffer, _sizeDispBuff))) return;
+    _composed = true;
+    _composedKey = key;
+    _composedHash = hash;
+
     // Snapshot + diff only, no I2C; loop() pushes the pixels. prev is synced per page only when that
     // page is actually sent (in loop()), so the diff always reflects what is physically on-screen.
-    memcpy(_curDispBuffer, display->getBuffer(), _sizeDispBuff);
-    if (_overlay) drawOverlay();
+    memcpy(_curDispBuffer, gfx, _sizeDispBuff);
+    if (key) drawOverlay();
     const int pages = lcdSettings.height / 8;
     const int width = lcdSettings.width;
     for (int page = 0; page < pages && page < MAX_PAGES; page++)
@@ -586,6 +651,7 @@ bool i2cDisplay::initDisplayBuffer()
     }
     memset(_curDispBuffer, 0, _sizeDispBuff);  // Clear the current display buffer
     memset(_prevDispBuffer, 0, _sizeDispBuff); // Clear the previous display buffer
+    _composed = false;                         // the next displayBuff() takes a snapshot
 
     return true; // Allocation successful
 }
