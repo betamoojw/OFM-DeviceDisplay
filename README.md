@@ -10,7 +10,7 @@
 A widget-based OLED display manager for OpenKNX devices: a priority/state-machine widget engine with power-save, a 5-way button system with **hold-to-confirm gestures**, a **runtime menu** (registry-driven, in-place editors, on-device network config), and **flash-persisted settings**.
 
 **What it can do:**
-- **Widgets**: boot logo, clock, time, QR, about, screensavers (Matrix/Doom/Life/…) + your own
+- **Widgets**: boot logo (static or animated), clock, time, QR, about, screensavers (Matrix/Doom/Life/…) + your own
 - **Priority engine**: CRITICAL > HIGH > NORMAL > LOW — a status/error widget overrides anything and auto-removes
 - **Power-save**: Active → Dimmed → Screensaver → Sleep → Off (all timeouts configurable & flash-persisted)
 - **Gestures**: hold a Home key to Reboot / ProgMode / Display-off / Pause with a countdown overlay (release = abort)
@@ -142,6 +142,7 @@ This library features a sophisticated widget management system, centralized butt
   - [On-Device Settings (Persistence)](#on-device-settings-persistence)
   - [Shared drawing helpers](#shared-drawing-helpers)
   - [Toast](#toast)
+  - [Boot logo](#boot-logo)
   - [Installation](#installation)
   - [Dependencies](#dependencies)
   - [Example Code](#example-code)
@@ -513,7 +514,9 @@ STARTUP -> IDLE -> {PRIORITY, BACKGROUND, DEFAULT}
 - **Multiple Widget Types**: Boot logo, menu, clock, QR code, system info, animations
 - **Dynamic Text and Alignment**: Customizable text alignment, size, color, and scrolling
 - **Icons and QR Codes**: Built-in support for icons and QR code generation
-- **Animated Widgets**: Matrix, starfield, fireworks, 3D cube, Pong, Game of Life
+- **Animated Widgets**: Matrix, starfield, fireworks, 3D cube, Pong, Game of Life, Doom
+- **Flush**: `displayBuff()` only diffs; with the I2C queue (RP2040/RP2350) the changed ranges go out through the queue, without it (ESP32) `loop()` sends one chunk of at most 32 columns per call, then the next changed page (longest flush per pass about 1.2 ms on an ESP32-S3 at 400 kHz, calculated from the ScheduledWire timing)
+- **Text**: the display object is a `FastSSD1306`, which writes the classic 5x7 font column by column (same pixels as Adafruit; 100 characters of size 1 and 5 of size 2 took 620 instead of 1432 us on an RP2350)
 - **Brightness Control**: Automatic brightness adjustment with VCOM register support (0-100%)
 
 ### Button System
@@ -924,6 +927,8 @@ The **Display → Panel** submenu exposes hardware tuning — 180° rotation, pr
 
 **KONAMI** — press **↑ ↑ ↓ ↓ ← → ← → OK OK** on the buttons. It is matched before any wake/routing, so it also works on a dark panel, and opens About (not while ProgMode is on). Both OKs are consumed: the first one after the eight arrows is dropped, so neither runs the menu entry under the cursor. A direction key, OK in an About opened from the menu, or 20 s without a key closes it; while it is shown no hold gesture arms. Display defaults are restored only by **Display → Reset** in the menu or `ddc config reset`.
 
+*Rumour has it that an About opened this way answers one more OK.*
+
 ### `ddc` console commands
 | Command | Effect |
 |---------|--------|
@@ -959,7 +964,16 @@ openknxDisplayModule.toast(ToastLevel::Ok, OpenKNX::Ui::kRowLan, "LAN up", "10.0
 ```
 - **Forms**: Info and Ok at the bottom for 2.5 s, Warn for 5 s, as a banner while the menu is open; Error as a card that stays until OK or LEFT.
 - **Queue**: one shown, three waiting, errors first; the same first line within 10 s counts up ("x3"); a retracted message that returns within 60 s counts on and does not wake the panel again.
-- **Waking**: Warn and Error wake a dimmed panel, the screensaver or sleep; ProgMode, an open editor and a panel switched off by the gesture let them wait. Which level shows where: [`doc/design/toast.md`](doc/design/toast.md).
+- **Waking**: Info and Ok show on a dimmed panel and over the screensaver without waking it; Warn and Error wake a dimmed panel, the screensaver or sleep. Sleep drops Info and Ok. An open editor, About, a gesture, a status widget and the boot logo hold every level back until they end; in ProgMode and with the panel switched off by the gesture Info and Ok are dropped and Warn and Error wait. Which level shows where: [`doc/design/toast.md`](doc/design/toast.md).
+
+## Boot logo
+The boot logo is the static OpenKNX logo for 3 s. A product can switch on the animated one instead: build flag `DEVICE_DISPLAY_BOOT_ANIM` (without it no animation code is built) and one call before `openknx.setup()`:
+```cpp
+#ifdef DEVICE_DISPLAY_BOOT_ANIM
+openknxDisplayModule.useBootLogoAnim("Erkan Çolak"); // author (UTF-8, optional), version = true, buildDate = true
+#endif
+```
+A ping runs from the left KNX square along the bus line to the right one and back, the logo grows from the line and stands 2 s, then rolls up while the product name (`FIRMWARE_NAME`, "Name (Dev)" puts "Dev" behind the version) is typed in; the version with the build date and "by <author>" follow below it; 8.4 s, 128x64 panel only, 1 KB heap while it runs.
 
 ---
 
@@ -1297,14 +1311,14 @@ void setupMenu(MenuWidget* menu)
 | **WidgetProgMode** | Priority | Programming mode indicator (blinks LED) |
 | **WidgetClock** | Default | Digital/Analog clock display |
 | **WidgetQRCode** | Default | QR code generator |
-| **WidgetBootLogo** | StatusWidget | Boot splash screen |
+| **WidgetBootLogo** | Startup (AutoRemove) | Boot splash screen, static or animated (`BootLogoAnim`, see [Boot logo](#boot-logo)) |
 | **WidgetMatrixClassic** | Screensaver | Matrix rain effect, listed as "Matrix" |
 | **WidgetStarfield** | Screensaver | Starfield animation |
 | **WidgetFireworks** | Screensaver | Fireworks animation |
 | **WidgetCube3D** | Screensaver | 3D rotating cube |
 | **WidgetPong** | Screensaver | Pong game animation |
 | **WidgetLife** | Screensaver | Conway's Game of Life |
-| **WidgetDoom** | Screensaver | Doom-style fire effect |
+| **WidgetDoom** | Screensaver | Raycaster walk through a maze, with title and banners |
 | **WidgetTime** | Default | Time / date / uptime |
 | **WidgetAbout** | Default | Device / firmware info |
 | **WidgetGestureOverlay** | Priority (CRITICAL) | Hold-to-confirm gesture overlay (see [Gesture System](#gesture-system-hold-to-confirm)) |
