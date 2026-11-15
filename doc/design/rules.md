@@ -63,7 +63,7 @@ Alle Vorgaben aus dem Handbuch an einem Ort. Die Kürzel (L1, T4, …) sind dies
 - **N2 Gleiches fassen**: Dieselbe erste Zeile innerhalb von 10 s erhöht nur „x3“. Ist die Ursache weg, zieht der Absender die Meldung mit `retractToast()` zurück; kommt sie innerhalb von 60 s wieder, zählt sie weiter und weckt nicht erneut.
 - **N3 Tasten**: Toast und Banner nehmen keine Taste weg. Die Karte nimmt OK und ←, auch gehalten, solange keine Haltegeste anläuft: OK ab 1 s, ← auf der Startseite ab 1 s, wenn ← eine Geste belegt hat (Standard: Display off). Dann bleibt die Karte; Loslassen im Balken bricht die Geste ab. Gibt der Absender ein Ziel mit, führt OK es aus (heute gibt keiner eins).
 - **N4 Verwerfen statt stauen**: Was die Lage nicht zeigt, wird verworfen (siehe Tabelle). Bei voller Schlange fällt eine neue Meldung weg; ein Fehler nimmt den Platz der letzten wartenden, außer alle wartenden sind frische Fehler.
-- **N5 Wenig I2C**: Der Toast ändert nur die unteren drei Pages, das Banner die oberen zwei. Ohne I2C-Scheduler schiebt `i2cDisplay` pro `loop()` höchstens eine geänderte Page.
+- **N5 Wenig I2C**: Der Toast ändert nur die unteren drei Pages, das Banner die oberen zwei. Ohne Warteschlange (ESP32) schiebt `i2cDisplay` pro `loop()` ein Stück von höchstens 32 Spalten und wechselt danach zur nächsten geänderten Page.
 
 ## Fachmodule
 

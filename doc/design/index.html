@@ -902,7 +902,7 @@ main ul,main ol{padding-left:1.3em}
       <div class="rule"><span class="id">N2</span><div><h4>Gleiches fassen</h4><p>Dieselbe erste Zeile innerhalb von 10 s erhöht nur „x3“. Ist die Ursache weg, zieht der Absender die Meldung mit <code>retractToast()</code> zurück; kommt sie innerhalb von 60 s wieder, zählt sie weiter und weckt nicht erneut.</p></div></div>
       <div class="rule"><span class="id">N3</span><div><h4>Tasten</h4><p>Toast und Banner nehmen keine Taste weg. Die Karte nimmt OK und ←, auch gehalten, solange keine Haltegeste anläuft: OK ab 1 s, ← auf der Startseite ab 1 s, wenn ← eine Geste belegt hat (Standard: Display off). Dann bleibt die Karte; Loslassen im Balken bricht die Geste ab. Gibt der Absender ein Ziel mit, führt OK es aus (heute gibt keiner eins).</p></div></div>
       <div class="rule"><span class="id">N4</span><div><h4>Verwerfen statt stauen</h4><p>Was die Lage nicht zeigt, wird verworfen (siehe Tabelle). Bei voller Schlange fällt eine neue Meldung weg; ein Fehler nimmt den Platz der letzten wartenden, außer alle wartenden sind frische Fehler.</p></div></div>
-      <div class="rule"><span class="id">N5</span><div><h4>Wenig I2C</h4><p>Der Toast ändert nur die unteren drei Pages, das Banner die oberen zwei. Ohne I2C-Scheduler schiebt <code>i2cDisplay</code> pro <code>loop()</code> höchstens eine geänderte Page.</p></div></div>
+      <div class="rule"><span class="id">N5</span><div><h4>Wenig I2C</h4><p>Der Toast ändert nur die unteren drei Pages, das Banner die oberen zwei. Ohne Warteschlange (ESP32) schiebt <code>i2cDisplay</code> pro <code>loop()</code> ein Stück von höchstens 32 Spalten und wechselt danach zur nächsten geänderten Page.</p></div></div>
     </div>
   </div>
   <div class="block xp">
