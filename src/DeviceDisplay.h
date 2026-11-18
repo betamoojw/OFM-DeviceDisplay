@@ -143,6 +143,7 @@ class DeviceDisplay : public OpenKNX::Module
     // engine; on RELEASE we decide short-press (navigate) vs gesture-consumed (no navigation).
     ButtonType _heldGestureButton = ButtonType::SELECT; // which button armed the current hold
     bool _gestureButtonArmed = false;                   // a hold is currently armed for _heldGestureButton
+    bool _remoteKey = false;                            // the event being handled is a web hold press
     // Latched once the armed gesture reaches Counting/fires, so the eventual release is
     // consumed even if the engine already folded back to Idle while the button was still held.
     bool _gestureReachedBar = false;
@@ -180,6 +181,15 @@ class DeviceDisplay : public OpenKNX::Module
 
     void captureFramebuffer();              // freeze the live framebuffer into _shotBuf
     void screenshotTick();                  // loop-driven writer FSM
+
+    // --- Hold actions DisplayReset..Bootloader (gesture or menu) ---------------------------------
+    // The request only latches; holdActionTick() runs it from loop() once its toast had time to reach the panel.
+    static constexpr uint32_t HOLD_ACTION_DELAY_MS = 800; // toast slides in within 300 ms
+    HomeKeyAction _holdAction = HomeKeyAction::None; // latched action, None = nothing pending
+    uint32_t _holdActionAt = 0;                      // millis() of the request
+    void requestHoldAction(HomeKeyAction action);
+    void holdActionTick();
+    void resetDisplaySettings(); // all display settings to their defaults, applied and saved
 
     // Toasts: queue + forms, drawn by i2cDisplay into the frame for the panel.
     DisplayToast _toast;
@@ -319,6 +329,9 @@ class DeviceDisplay : public OpenKNX::Module
     // Route a raw button event through the gesture engine BEFORE the widget (called
     // by the ButtonManager). Decides short-press (navigate) vs gesture (consume).
     void handleButtonEvent(const ButtonEvent& event);
+
+    /** @brief Same for a web hold press: a destructive hold action does not arm, its release may get lost. */
+    void handleRemoteButtonEvent(const ButtonEvent& event);
 
     // Force the UI back to a known state: menu closed, About/overlays gone, gesture disarmed, all
     // the "swallow the next event" latches cleared, display awake. Exists because reaching the home

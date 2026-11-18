@@ -360,7 +360,7 @@ Display › Home-Tasten
 
 | Parameter | Auswahl | Vorgabe |
 |---|---|---|
-| Halten ▲ | –, Pause, Reboot, Prog-Modus, Display aus, Screenshot | Pause |
+| Halten ▲ | –, Pause, Reboot, Prog-Modus, Display aus, Screenshot, Display-Reset, Netzwerk neu starten, WLAN-Reset, Komplett-Reset, Bootloader (die Firmware bietet nur, was sie kann) | Pause |
 | Halten ▼ | wie oben | Reboot |
 | Halten ◀ | wie oben | Display aus |
 | Halten ▶ | wie oben | Screenshot |

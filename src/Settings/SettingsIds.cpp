@@ -3,6 +3,34 @@
     #include "DeviceDisplay.h"
     #include <cstring>
 
+namespace
+{
+    // Hold actions this build offers, ordered by value; the list position is what menu, web and ddc show.
+    constexpr HomeKeyAction kHomeKeyActions[] = {
+        HomeKeyAction::None, HomeKeyAction::Pause, HomeKeyAction::Reboot, HomeKeyAction::Prog,
+        HomeKeyAction::DisplayOff, HomeKeyAction::Screenshot, HomeKeyAction::DisplayReset,
+    #ifdef DDISP_HAS_NETWORK_MODULE
+        HomeKeyAction::NetworkRestart,
+        #ifdef KNX_IP_WIFI
+        HomeKeyAction::WifiReset,
+        #endif
+    #endif
+        HomeKeyAction::FullReset,
+    #ifdef OPENKNX_CONSOLE_BOOTLOADER
+        HomeKeyAction::Bootloader,
+    #endif
+    };
+    constexpr uint8_t kHomeKeyActionCount = sizeof(kHomeKeyActions) / sizeof(kHomeKeyActions[0]);
+
+    // Web page labels (German) and device/console names (English), indexed by the HomeKeyAction value.
+    const char* const kHomeKeyLabels[HOME_KEY_ACTION_LAST + 1] = {
+        "-", "Pause", "Reboot", "Prog-Modus", "Display aus", "Screenshot",
+        "Display-Reset", "Netzwerk neu starten", "WLAN-Reset", "Komplett-Reset", "Bootloader"};
+    const char* const kHomeKeyNames[HOME_KEY_ACTION_LAST + 1] = {
+        "-", "Pause", "Reboot", "Prog-Mode", "Display off", "Screenshot",
+        "Disp. reset", "Net restart", "WiFi reset", "Full reset", "Bootloader"};
+} // namespace
+
 // Ranges are the ones the console has always clamped to; the labels are the (German) web page's, the device menu is English.
 const DisplaySettingDef DISPLAY_SETTING_DEFS[] = {
     {"brightness", "Helligkeit", "0..9 = 10..100 %", DisplaySettingKind::Number, 0, 9, DSG_NORMAL},
@@ -20,10 +48,10 @@ const DisplaySettingDef DISPLAY_SETTING_DEFS[] = {
     {"refresh", "Refresh", "0..5, langsam -> schnell", DisplaySettingKind::Number, 0, 5, DSG_EXPERT},
     {"screenshot_invert", "Screenshot invertieren", "", DisplaySettingKind::Toggle, 0, 1, DSG_EXPERT},
     // Home-screen hold actions (>= ~4 s on the respective key). Same store, shown next to the pad.
-    {"homekey_up", "Halten ▲", "", DisplaySettingKind::Choice, 0, 5, DSG_HOMEKEY},
-    {"homekey_down", "Halten ▼", "", DisplaySettingKind::Choice, 0, 5, DSG_HOMEKEY},
-    {"homekey_left", "Halten ◀", "", DisplaySettingKind::Choice, 0, 5, DSG_HOMEKEY},
-    {"homekey_right", "Halten ▶", "", DisplaySettingKind::Choice, 0, 5, DSG_HOMEKEY},
+    {"homekey_up", "Halten ▲", "", DisplaySettingKind::Choice, 0, kHomeKeyActionCount - 1, DSG_HOMEKEY},
+    {"homekey_down", "Halten ▼", "", DisplaySettingKind::Choice, 0, kHomeKeyActionCount - 1, DSG_HOMEKEY},
+    {"homekey_left", "Halten ◀", "", DisplaySettingKind::Choice, 0, kHomeKeyActionCount - 1, DSG_HOMEKEY},
+    {"homekey_right", "Halten ▶", "", DisplaySettingKind::Choice, 0, kHomeKeyActionCount - 1, DSG_HOMEKEY},
 };
 
 const size_t DISPLAY_SETTING_DEF_COUNT = sizeof(DISPLAY_SETTING_DEFS) / sizeof(DISPLAY_SETTING_DEFS[0]);
@@ -35,10 +63,6 @@ namespace
     const char* const kScreenSaverLabels[] = {
         "Clock", "Cube3D", "Doom", "FireWorks", "Life", "Matrix", "Pong", "Starfield", "Aus"};
     constexpr uint8_t kScreenSaverCount = sizeof(kScreenSaverTypes);
-
-    // Order MUST match the HomeKeyAction enum (it is the persisted value).
-    const char* const kHomeKeyLabels[] = {
-        "-", "Pause", "Reboot", "Prog-Modus", "Display aus", "Screenshot"};
 
     // id -> keyMap slot; nullptr-safe, returns HOME_KEY_COUNT when the id is not a home key.
     HomeKeyIndex homeKeyOf(const char* id)
@@ -87,7 +111,7 @@ bool applyDisplaySetting(const char* id, long value)
     else if (strcmp(id, "precharge") == 0) store.setPreChargeIdx((uint8_t)v);
     else if (strcmp(id, "refresh") == 0) store.setRefreshIdx((uint8_t)v);
     else if (strcmp(id, "screenshot_invert") == 0) store.setScreenshotInvert(v != 0);
-    else if (homeKeyOf(id) != HOME_KEY_COUNT) store.setKeyAction(homeKeyOf(id), (HomeKeyAction)v);
+    else if (homeKeyOf(id) != HOME_KEY_COUNT) store.setKeyAction(homeKeyOf(id), homeKeyActionAt(value)); // out of range: None
     else return false; // definition exists but no setter is wired -> refuse instead of silently ignoring
 
     return true;
@@ -111,7 +135,7 @@ bool readDisplaySetting(const char* id, long& value)
     else if (strcmp(id, "precharge") == 0) value = store.preChargeIdx();
     else if (strcmp(id, "refresh") == 0) value = store.refreshIdx();
     else if (strcmp(id, "screenshot_invert") == 0) value = store.screenshotInvert() ? 1 : 0;
-    else if (homeKeyOf(id) != HOME_KEY_COUNT) value = (long)store.keyAction(homeKeyOf(id));
+    else if (homeKeyOf(id) != HOME_KEY_COUNT) value = homeKeyActionListPos(store.keyAction(homeKeyOf(id)));
     else return false;
 
     return true;
@@ -126,10 +150,37 @@ const char* displayChoiceLabel(const char* id, long index)
     }
     else if (homeKeyOf(id) != HOME_KEY_COUNT)
     {
-        if (index >= 0 && index < (long)(sizeof(kHomeKeyLabels) / sizeof(kHomeKeyLabels[0])))
-            return kHomeKeyLabels[index];
+        if (index >= 0 && index < kHomeKeyActionCount) return kHomeKeyLabels[static_cast<uint8_t>(kHomeKeyActions[index])];
     }
     return nullptr;
+}
+
+uint8_t homeKeyActionCount()
+{
+    return kHomeKeyActionCount;
+}
+
+HomeKeyAction homeKeyActionAt(long pos)
+{
+    return (pos >= 0 && pos < kHomeKeyActionCount) ? kHomeKeyActions[pos] : HomeKeyAction::None;
+}
+
+uint8_t homeKeyActionListPos(HomeKeyAction action)
+{
+    for (uint8_t i = 0; i < kHomeKeyActionCount; ++i)
+        if (kHomeKeyActions[i] == action) return i;
+    return 0;
+}
+
+bool homeKeyActionOffered(HomeKeyAction action)
+{
+    return action == HomeKeyAction::None || homeKeyActionListPos(action) != 0;
+}
+
+const char* homeKeyActionName(HomeKeyAction action)
+{
+    const uint8_t v = static_cast<uint8_t>(action);
+    return v <= HOME_KEY_ACTION_LAST ? kHomeKeyNames[v] : "?";
 }
 
 uint8_t screenSaverTypeAt(long pos)

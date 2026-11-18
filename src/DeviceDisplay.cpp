@@ -28,15 +28,9 @@
         #include "Widgets/Console.h"
     #endif
 
-    // OFM-Network is optional. Its header body only exists when an IP transport is configured
-    // (NetworkModule.h is wrapped in #if KNX_IP_WIFI || KNX_IP_LAN), so guard on BOTH the header
-    // presence AND a transport - otherwise a display build without a transport would reference the
-    // non-existent openknxNetwork and fail to compile.
-    #if defined(__has_include)
-        #if __has_include("NetworkModule.h") && (defined(KNX_IP_WIFI) || defined(KNX_IP_LAN))
-            #include "NetworkModule.h"
-            #define DDISP_HAS_NETWORK_MODULE 1
-        #endif
+    // OFM-Network is optional; Settings/DisplaySettings.h sets DDISP_HAS_NETWORK_MODULE (header + IP transport).
+    #ifdef DDISP_HAS_NETWORK_MODULE
+        #include "NetworkModule.h"
     #endif
 
     #include <algorithm> // std::min/std::max for index clamping
@@ -185,6 +179,7 @@ void DeviceDisplay::init()
         // Clean frame was frozen at the Counting transition (see loop()); write from that buffer.
         requestScreenshot(false);
     });
+    _gestureEngine.setOnHoldAction([this](GestureAction action) { requestHoldAction(static_cast<HomeKeyAction>(action)); });
 
     // Seed the engine key map from the display settings; setup() re-applies after readFlash().
     seedGestureKeyMapFromSettings();
@@ -205,11 +200,16 @@ inline uint8_t refreshByte(uint8_t idx) { return kRefreshBytes[idx < 6 ? idx : 5
 
 void DeviceDisplay::seedGestureKeyMapFromSettings()
 {
+    // a stored action this build does not offer arms nothing
+    const auto offered = [this](HomeKeyIndex key) {
+        const HomeKeyAction a = _settingsStore.keyAction(key);
+        return static_cast<GestureAction>(homeKeyActionOffered(a) ? a : HomeKeyAction::None);
+    };
     GestureKeyMap km;
-    km.up = static_cast<GestureAction>(_settingsStore.keyAction(HOME_KEY_UP));
-    km.down = static_cast<GestureAction>(_settingsStore.keyAction(HOME_KEY_DOWN));
-    km.left = static_cast<GestureAction>(_settingsStore.keyAction(HOME_KEY_LEFT));
-    km.right = static_cast<GestureAction>(_settingsStore.keyAction(HOME_KEY_RIGHT));
+    km.up = offered(HOME_KEY_UP);
+    km.down = offered(HOME_KEY_DOWN);
+    km.left = offered(HOME_KEY_LEFT);
+    km.right = offered(HOME_KEY_RIGHT);
     _gestureEngine.setKeyMap(km);
 }
 
@@ -505,10 +505,10 @@ void DeviceDisplay::wireMenuCallbacks()
         else if (o.key == "screensaver_type") o.defaultValue = MenuValue(static_cast<size_t>(screenSaverListPos(_settingsStore.screenSaverType())));
         else if (o.key == "screensaver_after") o.defaultValue = MenuValue(static_cast<size_t>(_settingsStore.screenSaverMin()));
         else if (o.key == "sleep_after") o.defaultValue = MenuValue(static_cast<size_t>(_settingsStore.sleepMin()));
-        else if (o.key == "homekey_up") o.defaultValue = MenuValue(static_cast<size_t>(_settingsStore.keyAction(HOME_KEY_UP)));
-        else if (o.key == "homekey_down") o.defaultValue = MenuValue(static_cast<size_t>(_settingsStore.keyAction(HOME_KEY_DOWN)));
-        else if (o.key == "homekey_left") o.defaultValue = MenuValue(static_cast<size_t>(_settingsStore.keyAction(HOME_KEY_LEFT)));
-        else if (o.key == "homekey_right") o.defaultValue = MenuValue(static_cast<size_t>(_settingsStore.keyAction(HOME_KEY_RIGHT)));
+        else if (o.key == "homekey_up") o.defaultValue = MenuValue(static_cast<size_t>(homeKeyActionListPos(_settingsStore.keyAction(HOME_KEY_UP))));
+        else if (o.key == "homekey_down") o.defaultValue = MenuValue(static_cast<size_t>(homeKeyActionListPos(_settingsStore.keyAction(HOME_KEY_DOWN))));
+        else if (o.key == "homekey_left") o.defaultValue = MenuValue(static_cast<size_t>(homeKeyActionListPos(_settingsStore.keyAction(HOME_KEY_LEFT))));
+        else if (o.key == "homekey_right") o.defaultValue = MenuValue(static_cast<size_t>(homeKeyActionListPos(_settingsStore.keyAction(HOME_KEY_RIGHT))));
         else if (o.key == "screenshot_invert") o.defaultValue = MenuValue(_settingsStore.screenshotInvert());
         // "Display" tunings seed from the LIVE pending mirror (may differ from the saved store value).
         else if (o.key == "disp_rotate") o.defaultValue = MenuValue(_pendDispRotate);
@@ -561,12 +561,9 @@ void DeviceDisplay::wireMenuCallbacks()
         logDebugP("screenshotInvert -> %u", val.getBool() ? 1u : 0u);
     });
 
-    // Home keys: dropdown 0..5 (HomeKeyAction) per direction -> persist + re-seed the gesture engine.
+    // Home keys: dropdown = list position of the offered actions per direction -> persist + re-seed the gesture engine.
     const auto homeKeyFromIdx = [](size_t idx) -> HomeKeyAction {
-        // clamp out-of-range/future index to None (Screenshot=5 is the highest valid action)
-        return (idx <= static_cast<size_t>(HomeKeyAction::Screenshot))
-                   ? static_cast<HomeKeyAction>(idx)
-                   : HomeKeyAction::None;
+        return idx < homeKeyActionCount() ? homeKeyActionAt(static_cast<long>(idx)) : HomeKeyAction::None;
     };
     _menuWidget->registerOnValueChanged("homekey_up", [this, homeKeyFromIdx](const MenuConfig::MenuOption&, const MenuValue& val) {
         _settingsStore.setKeyAction(HOME_KEY_UP, homeKeyFromIdx(val.getSizeT()));
@@ -649,15 +646,9 @@ void DeviceDisplay::wireMenuCallbacks()
     // Reset: restore ALL display settings to defaults, apply them live via the SAME canonical
     // path as boot, persist, then rebuild the menu so every shown value refreshes. No/Yes guard is
     // handled by the Action's confirmText.
-    _menuWidget->registerAction("display_reset", [this]() {
-        _settingsStore.loadDefaults();
-        applyAllSettingsToRuntime();
-        applyWidgetSettings();
-        _settingsStore.requestSave(true);
-        if (_menuWidget) _menuWidget->rebuild();
-        toast(ToastLevel::Ok, nullptr, "Display reset");
-        logInfoP("Display settings reset to defaults");
-    });
+    _menuWidget->registerAction("display_reset", [this]() { resetDisplaySettings(); });
+    // System -> Factory reset (No/Yes guard by confirmText): the same erase as the Full reset hold action.
+    _menuWidget->registerAction("factory_reset", [this]() { requestHoldAction(HomeKeyAction::FullReset); });
 
     // --- "Display" hardware tuning: LIVE preview ONLY, never auto-saved. Values go straight to the
     //     panel and into _pendDisp*; the store/flash are written ONLY by the disp_save action. This is
@@ -844,6 +835,9 @@ void DeviceDisplay::loop(bool configured)
 
     // Drive the non-blocking screenshot writer (SD), chunked across ticks (same shallow context).
     screenshotTick();
+
+    // Latched hold action (erase, network, bootloader): runs here, never in the button or menu callback.
+    holdActionTick();
 
     // Process button input (routes raw events through DeviceDisplay::handleButtonEvent()).
     _buttonManager->loop();
@@ -1249,7 +1243,13 @@ void DeviceDisplay::armGesture(ButtonType type)
         return;
     }
 
-    const GestureAction action = _gestureEngine.resolveAction(type, isHomeScreen());
+    GestureAction action = _gestureEngine.resolveAction(type, isHomeScreen());
+    // A web key comes as two requests; a lost release must not let a destructive action run.
+    if (_remoteKey && gestureIsDestructive(action))
+    {
+        toast(ToastLevel::Info, nullptr, "Device key only");
+        action = GestureAction::None;
+    }
     if (action != GestureAction::None)
     {
         _gestureEngine.startHold(action);
@@ -1292,7 +1292,9 @@ void DeviceDisplay::updateGestureOverlay()
     // show the countdown during Counting.
     const bool ack = (phase == GesturePhase::Firing || phase == GesturePhase::Done);
     const GestureAction gact = _gestureEngine.getCurrentAction();
-    const bool suppressAck = (gact == GestureAction::DisplayOff || gact == GestureAction::Screenshot);
+    // The hold actions (DisplayReset..Bootloader) end with a toast, which waits while the overlay is shown.
+    const bool suppressAck = (gact == GestureAction::DisplayOff || gact == GestureAction::Screenshot ||
+                              static_cast<uint8_t>(gact) >= static_cast<uint8_t>(GestureAction::DisplayReset));
     const bool shouldShow = (phase == GesturePhase::Counting) || (ack && !suppressAck);
 
     Widget* w = static_cast<Widget*>(_gestureOverlay);
@@ -1315,6 +1317,76 @@ void DeviceDisplay::updateGestureOverlay()
         // Restore the prog widget if prog mode is STILL active (an aborted deactivate).
         if (knx.progMode() && _progModeWidget)
             _progModeWidget->addAction(WidgetFlags::DisplayEnabled);
+    }
+}
+
+// --- Hold actions ---------------------------------------------------------------------------------
+
+void DeviceDisplay::handleRemoteButtonEvent(const ButtonEvent& event)
+{
+    _remoteKey = true;
+    handleButtonEvent(event);
+    _remoteKey = false;
+}
+
+void DeviceDisplay::resetDisplaySettings()
+{
+    _settingsStore.loadDefaults();
+    applyAllSettingsToRuntime();
+    applyWidgetSettings();
+    _settingsStore.requestSave(true);
+    if (_menuWidget) _menuWidget->rebuild();
+    toast(ToastLevel::Ok, nullptr, "Display reset");
+    logInfoP("Display settings reset to defaults");
+}
+
+void DeviceDisplay::requestHoldAction(HomeKeyAction action)
+{
+    if (_holdAction != HomeKeyAction::None || !homeKeyActionOffered(action)) return; // one at a time
+    const char* text = nullptr;
+    switch (action)
+    {
+        case HomeKeyAction::WifiReset: text = "WiFi reset"; break;
+        case HomeKeyAction::FullReset: text = "Erasing data"; break;
+        case HomeKeyAction::Bootloader: text = "Bootloader mode"; break;
+        default: break; // DisplayReset posts its own toast when it ran; "net reset" may refuse, so no promise for it
+    }
+    if (text) toast(ToastLevel::Warn, nullptr, text);
+    logInfoP("Hold action: %s", homeKeyActionName(action));
+    _holdAction = action;
+    _holdActionAt = millis();
+}
+
+void DeviceDisplay::holdActionTick()
+{
+    if (_holdAction == HomeKeyAction::None || millis() - _holdActionAt < HOLD_ACTION_DELAY_MS) return;
+    const HomeKeyAction action = _holdAction;
+    _holdAction = HomeKeyAction::None;
+    switch (action)
+    {
+        case HomeKeyAction::DisplayReset:
+            resetDisplaySettings();
+            break;
+    #ifdef DDISP_HAS_NETWORK_MODULE
+        case HomeKeyAction::NetworkRestart:
+            openknxNetwork.processCommand("net reset", false); // console path, incl. its refusal during a link restart
+            break;
+        #ifdef KNX_IP_WIFI
+        case HomeKeyAction::WifiReset:
+            openknxNetwork.processCommand("net wifi erase", false); // same path as the console, restarts
+            break;
+        #endif
+    #endif
+        case HomeKeyAction::FullReset:
+            openknx.console.erase(OpenKNX::EraseMode::Data); // restarts, never returns
+            break;
+    #ifdef OPENKNX_CONSOLE_BOOTLOADER
+        case HomeKeyAction::Bootloader:
+            openknx.console.resetToBootloader(); // never returns
+            break;
+    #endif
+        default:
+            break;
     }
 }
 

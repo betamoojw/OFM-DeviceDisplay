@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MenuConfig.h"
+#include "../Settings/SettingsIds.h"
 
 // Rows are built with MenuBuild::addRow() straight into their final vector storage, never as
 // stack locals — see the rationale above MenuBuild in MenuConfig.h. Shared option lists are
@@ -81,10 +82,15 @@ namespace DefaultMenus
         return opts;
     }
 
-    // Index MUST match HomeKeyAction: 0=None 1=Pause 2=Reboot 3=Prog 4=DisplayOff 5=Screenshot.
+    // Index = list position of the hold actions this build offers (homeKeyActionAt()), not the persisted value.
     inline const std::vector<std::string>& homeKeyActions()
     {
-        static const std::vector<std::string> opts = {"-", "Pause", "Reboot", "Prog-Mode", "Display off", "Screenshot"};
+        static const std::vector<std::string> opts = [] {
+            std::vector<std::string> v;
+            v.reserve(homeKeyActionCount());
+            for (uint8_t i = 0; i < homeKeyActionCount(); ++i) v.emplace_back(homeKeyActionName(homeKeyActionAt(i)));
+            return v;
+        }();
         return opts;
     }
 
@@ -496,7 +502,7 @@ namespace DefaultMenus
         });
     }
 
-    // --- System (Prog-Mode, reboot, factory reset) ----------------------------
+    // --- System (Prog-Mode, reboot, factory reset = Full reset: KNX, OpenKNX data, files) ---
     MENU_NOINLINE inline void addSystemRoot(std::vector<MenuOption>& roots)
     {
         addRow(roots, [](MenuOption& system) {
@@ -518,9 +524,9 @@ namespace DefaultMenus
             });
             addRow(sub, [](MenuOption& o) {
                 o.label = "Factory reset";
-                o.type = MenuConfig::MenuElementType::Toast;
+                o.type = MenuConfig::MenuElementType::Action;
                 o.key = "factory_reset";
-                o.toast = "Factory reset ...";
+                o.confirmText = "Erase all but WiFi?";
             });
             sub.push_back(backRow());
         });

@@ -36,7 +36,13 @@ enum class GestureAction : uint8_t
     Reboot,     // Reboot the device
     ProgMode,   // Toggle KNX programming mode
     DisplayOff, // Turn the display off immediately (#17); any button wakes it
-    Screenshot  // Capture the framebuffer to SD (#value MUST match HomeKeyAction::Screenshot = 5)
+    Screenshot, // Capture the framebuffer to SD (#value MUST match HomeKeyAction::Screenshot = 5)
+    // Values MUST match HomeKeyAction; these go to the hold-action callback (setOnHoldAction)
+    DisplayReset = 6,   // display settings back to their defaults
+    NetworkRestart = 7, // restart the network adapter
+    WifiReset = 8,      // erase the WiFi credentials (destructive)
+    FullReset = 9,      // erase KNX parameters, OpenKNX data and files (destructive)
+    Bootloader = 10     // restart into the bootloader (destructive)
 };
 
 /**
@@ -71,6 +77,19 @@ enum class GesturePhase : uint8_t
 static constexpr uint32_t HOLD_PHASE1_MS = 1000;  // ms until the confirm bar starts
 static constexpr uint32_t GESTURE_BAR_MS = 3000;  // ms confirm-bar duration (concept 3 s)
 static constexpr uint32_t GESTURE_DONE_MS = 1300; // ms Done dwell after Prog/Pause (mockup 1.3 s)
+static constexpr uint32_t DESTRUCTIVE_HOLD_MS = 30000; // ms a destructive action is held until it fires
+
+/** @brief True for the actions that erase data or leave the firmware (30 s hold). */
+inline bool gestureIsDestructive(GestureAction action)
+{
+    return action == GestureAction::WifiReset || action == GestureAction::FullReset || action == GestureAction::Bootloader;
+}
+
+/** @brief Confirm-bar length of an action: GESTURE_BAR_MS, or up to DESTRUCTIVE_HOLD_MS for a destructive one. */
+inline uint32_t gestureBarMs(GestureAction action)
+{
+    return gestureIsDestructive(action) ? DESTRUCTIVE_HOLD_MS - HOLD_PHASE1_MS : GESTURE_BAR_MS;
+}
 
 /**
  * @brief Home-screen button-to-action mapping (GEST-03).
@@ -148,10 +167,13 @@ class GestureEngine
 
     /**
      * @brief Linear confirm-bar fraction, 1.0 (full) .. 0.0 (empty).
-     * @return 1 - (elapsed - HOLD_PHASE1_MS) / GESTURE_BAR_MS, clamped to [0,1].
+     * @return 1 - (elapsed - HOLD_PHASE1_MS) / getBarMs(), clamped to [0,1].
      *         Returns 1.0 during PreRoll/before the bar starts and 0.0 from Firing onwards.
      */
     float getBarFraction() const;
+
+    /** @brief Confirm-bar length of the current gesture in ms (gestureBarMs()). */
+    uint32_t getBarMs() const { return gestureBarMs(_action); }
 
     // --- Key map (GEST-03) ------------------------------------------------------------
 
@@ -211,6 +233,12 @@ class GestureEngine
      */
     void setOnScreenshot(ActionCallback cb);
 
+    /**
+     * @brief Set the callback fired when DisplayReset..Bootloader reaches Firing; it gets the action.
+     * @note  Must only latch the action: erase, network and restart run from loop(). Invoked once, non-blocking.
+     */
+    void setOnHoldAction(std::function<void(GestureAction)> cb);
+
   private:
     GesturePhase _phase = GesturePhase::Idle;    // Current gesture phase
     GestureAction _action = GestureAction::None; // Action of the current gesture
@@ -229,12 +257,13 @@ class GestureEngine
     ActionCallback _onPauseToggle; // fired for GestureAction::Pause
     ActionCallback _onDisplayOff;  // fired for GestureAction::DisplayOff (#17)
     ActionCallback _onScreenshot;  // fired for GestureAction::Screenshot
+    std::function<void(GestureAction)> _onHoldAction; // fired for DisplayReset..Bootloader
 
     bool _fired = false;   // Firing callback already dispatched for this gesture
     uint32_t _firedAt = 0; // millis() when the action fired (for the Done dwell)
 
-    /** @brief Compute the linear bar fraction for a given elapsed time (1..0, clamped). */
-    static float barFractionFor(uint32_t elapsed);
+    /** @brief Compute the linear bar fraction for a given elapsed time and bar length (1..0, clamped). */
+    static float barFractionFor(uint32_t elapsed, uint32_t barMs);
 
     /**
      * @brief Dispatch exactly the callback matching the current action (once).

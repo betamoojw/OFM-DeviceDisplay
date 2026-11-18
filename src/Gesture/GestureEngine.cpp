@@ -74,7 +74,7 @@ void GestureEngine::tick(uint32_t now)
         {
             _elapsed = now - _holdStart;
             // Bar empty -> fire exactly once. Firing is latched for the caller to observe.
-            if (_elapsed >= HOLD_PHASE1_MS + GESTURE_BAR_MS)
+            if (_elapsed >= HOLD_PHASE1_MS + gestureBarMs(_action))
             {
                 _phase = GesturePhase::Firing;
                 _firedAt = now;
@@ -141,16 +141,16 @@ GestureAction GestureEngine::getCurrentAction() const
     return _action;
 }
 
-float GestureEngine::barFractionFor(uint32_t elapsed)
+float GestureEngine::barFractionFor(uint32_t elapsed, uint32_t barMs)
 {
     // Before the confirm bar starts the fraction is full (1.0).
     if (elapsed <= HOLD_PHASE1_MS) return 1.0f;
 
     const uint32_t barElapsed = elapsed - HOLD_PHASE1_MS;
-    if (barElapsed >= GESTURE_BAR_MS) return 0.0f;
+    if (barElapsed >= barMs) return 0.0f;
 
-    // Linear 1..0 ramp over GESTURE_BAR_MS.
-    return 1.0f - static_cast<float>(barElapsed) / static_cast<float>(GESTURE_BAR_MS);
+    // Linear 1..0 ramp over barMs.
+    return 1.0f - static_cast<float>(barElapsed) / static_cast<float>(barMs);
 }
 
 float GestureEngine::getBarFraction() const
@@ -160,7 +160,7 @@ float GestureEngine::getBarFraction() const
         case GesturePhase::PreRoll:
             return 1.0f; // bar not started yet
         case GesturePhase::Counting:
-            return barFractionFor(_elapsed);
+            return barFractionFor(_elapsed, gestureBarMs(_action));
         case GesturePhase::Firing:
         case GesturePhase::Done:
             return 0.0f; // bar fully consumed
@@ -233,6 +233,11 @@ void GestureEngine::setOnScreenshot(ActionCallback cb)
     _onScreenshot = cb;
 }
 
+void GestureEngine::setOnHoldAction(std::function<void(GestureAction)> cb)
+{
+    _onHoldAction = cb;
+}
+
 void GestureEngine::fireAction()
 {
     // Fire exactly once per gesture. Guarding here (rather than only at the call site) makes
@@ -259,6 +264,13 @@ void GestureEngine::fireAction()
             break;
         case GestureAction::Screenshot:
             if (_onScreenshot) _onScreenshot();
+            break;
+        case GestureAction::DisplayReset:
+        case GestureAction::NetworkRestart:
+        case GestureAction::WifiReset:
+        case GestureAction::FullReset:
+        case GestureAction::Bootloader:
+            if (_onHoldAction) _onHoldAction(_action);
             break;
         case GestureAction::None:
         default:

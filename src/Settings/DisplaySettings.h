@@ -15,19 +15,32 @@
 #include <cstddef>
 #include <cstdint>
 
+// OFM-Network is optional: its header body only exists with an IP transport, so both must be there.
+#if defined(__has_include)
+    #if __has_include("NetworkModule.h") && (defined(KNX_IP_WIFI) || defined(KNX_IP_LAN))
+        #define DDISP_HAS_NETWORK_MODULE 1
+    #endif
+#endif
+
 /**
- * Action bound to a Home-screen direction key ("Home keys" submenu).
- * Enum value equals the mock option index.
+ * Action bound to a Home-screen direction key ("Home keys" submenu). The value is persisted:
+ * new actions are appended. Which ones a build offers lists homeKeyActionAt() (SettingsIds.h).
  */
 enum class HomeKeyAction : uint8_t
 {
-    None = 0,       // '—'          : no action
-    Pause = 1,      // 'Pause'      : pause/resume home rotation
-    Reboot = 2,     // 'Reboot'     : reboot the device
-    Prog = 3,       // 'Prog-Mode'  : toggle KNX programming mode
-    DisplayOff = 4, // 'Display off': turn the display off (#17)
-    Screenshot = 5  // 'Screenshot' : capture the framebuffer to SD. Values MUST match GestureAction.
+    None = 0,           // '—'          : no action
+    Pause = 1,          // 'Pause'      : pause/resume home rotation
+    Reboot = 2,         // 'Reboot'     : reboot the device
+    Prog = 3,           // 'Prog-Mode'  : toggle KNX programming mode
+    DisplayOff = 4,     // 'Display off': turn the display off (#17)
+    Screenshot = 5,     // 'Screenshot' : capture the framebuffer to SD. Values MUST match GestureAction.
+    DisplayReset = 6,   // display settings back to their defaults
+    NetworkRestart = 7, // restart the network adapter (OFM-Network)
+    WifiReset = 8,      // erase the WiFi credentials, then restart (WiFi builds)
+    FullReset = 9,      // erase KNX parameters, OpenKNX data and files, then restart
+    Bootloader = 10     // restart into the USB boot / ROM download mode
 };
+constexpr uint8_t HOME_KEY_ACTION_LAST = static_cast<uint8_t>(HomeKeyAction::Bootloader);
 
 /**
  * Index of a Home-screen direction key inside DisplaySettings::keyMap {UP, DOWN, LEFT, RIGHT}.

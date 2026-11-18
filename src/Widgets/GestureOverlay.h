@@ -112,7 +112,7 @@ class WidgetGestureOverlay : public Widget
     // Last-drawn snapshot so we only repaint on change; _lastBarCols = 0xFF forces a frame.
     GesturePhase _lastPhase = GesturePhase::Idle;
     uint8_t _lastBarCols = 0xFF; // last drawn bar fill width in pixels
-    uint8_t _lastTenths = 0xFF;  // last drawn remaining time in 0.1 s
+    uint16_t _lastTenths = 0xFFFF; // last drawn remaining time in 0.1 s (up to 290)
     GestureAction _lastAction = GestureAction::None;
 
     bool _confirmedFired = false; // ensure the confirm callback runs at most once

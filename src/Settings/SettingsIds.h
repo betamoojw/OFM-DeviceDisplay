@@ -12,6 +12,7 @@
  * two cannot drift apart. apply/read go through the DisplaySettingsStore; neither persists - the
  * caller decides when to save (console: right away, web: from loop()).
  **/
+#include "DisplaySettings.h"
 #include <cstddef>
 #include <cstdint>
 
@@ -65,6 +66,21 @@ bool readDisplaySetting(const char* id, long& value);
 
 /** @brief Label for a Choice setting's option index, or nullptr when out of range. */
 const char* displayChoiceLabel(const char* id, long index);
+
+/** @brief Number of hold actions this build offers; the list (menu, web, ddc) is ordered by value. */
+uint8_t homeKeyActionCount();
+
+/** @brief Hold-action list position -> persisted HomeKeyAction; None for a position outside the list. */
+HomeKeyAction homeKeyActionAt(long pos);
+
+/** @brief Persisted HomeKeyAction -> list position; 0 (None) for an action this build does not offer. */
+uint8_t homeKeyActionListPos(HomeKeyAction action);
+
+/** @brief True when this build offers the action (a stored one it lacks acts as None). */
+bool homeKeyActionOffered(HomeKeyAction action);
+
+/** @brief Short English name for the device menu and the console, at most 11 characters. */
+const char* homeKeyActionName(HomeKeyAction action);
 
 /** @brief Screensaver list (menu, web, ddc) position -> persisted ScreenSaverType value; clamps. */
 uint8_t screenSaverTypeAt(long pos);

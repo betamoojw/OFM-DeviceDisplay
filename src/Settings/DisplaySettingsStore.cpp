@@ -207,12 +207,9 @@ bool DisplaySettingsStore::deserialize(const uint8_t *buf, size_t size)
     _settings.sleepMin = clampMin(getU16(p));
     for (size_t i = 0; i < HOME_KEY_COUNT; ++i)
     {
-        // clamp an unknown/future action byte to None (stale/downgraded blob safety).
-        // Screenshot=5 is the highest valid action -> must be inside the accepted range.
+        // an unknown/future action byte becomes None; one this build does not offer acts as None (homeKeyActionOffered)
         const uint8_t a = getU8(p);
-        _settings.keyMap[i] = (a <= static_cast<uint8_t>(HomeKeyAction::Screenshot))
-                                  ? static_cast<HomeKeyAction>(a)
-                                  : HomeKeyAction::None;
+        _settings.keyMap[i] = (a <= HOME_KEY_ACTION_LAST) ? static_cast<HomeKeyAction>(a) : HomeKeyAction::None;
     }
     _settings.iconMenu = getU8(p) != 0;
     _settings.displayRotate = getU8(p) != 0;

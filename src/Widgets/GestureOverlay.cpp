@@ -45,7 +45,7 @@ void WidgetGestureOverlay::start()
     // paints on the first loop() and re-arms the confirm/cancel callbacks.
     _lastPhase = GesturePhase::Idle;
     _lastBarCols = 0xFF;
-    _lastTenths = 0xFF;
+    _lastTenths = 0xFFFF;
     _lastAction = GestureAction::None;
     _confirmedFired = false;
     _cancelledFired = false;
@@ -101,7 +101,7 @@ void WidgetGestureOverlay::loop()
     const bool ended = phase == GesturePhase::Aborted || phase == GesturePhase::Idle;
     const uint16_t fill = ended ? 0 : static_cast<uint16_t>(1000 - static_cast<uint16_t>(frac * 1000.0f + 0.5f));
     const uint8_t barCols = static_cast<uint8_t>(static_cast<uint32_t>(_display->display->width() - 2 * OpenKNX::Ui::BarPad) * fill / 1000);
-    const uint8_t tenths = static_cast<uint8_t>((static_cast<uint16_t>(frac * GESTURE_BAR_MS + 0.5f) + 99) / 100);
+    const uint16_t tenths = static_cast<uint16_t>((static_cast<uint32_t>(frac * _engine->getBarMs() + 0.5f) + 99) / 100);
 
     if (phase == _lastPhase && action == _lastAction && barCols == _lastBarCols && tenths == _lastTenths) return;
     _lastPhase = phase;
@@ -126,6 +126,14 @@ const char *WidgetGestureOverlay::titleForAction(GestureAction action) const
             return "Turn off";
         case GestureAction::Screenshot:
             return "Capture";
+        case GestureAction::DisplayReset:
+        case GestureAction::WifiReset:
+            return "Reset";
+        case GestureAction::NetworkRestart:
+        case GestureAction::Bootloader:
+            return "Restart";
+        case GestureAction::FullReset:
+            return "Erase";
         default:
             return "Action";
     }
@@ -146,6 +154,16 @@ const char *WidgetGestureOverlay::labelForAction(GestureAction action) const
             return "Display";
         case GestureAction::Screenshot:
             return "Screen";
+        case GestureAction::DisplayReset:
+            return "Display";
+        case GestureAction::NetworkRestart:
+            return "Network";
+        case GestureAction::WifiReset:
+            return "WiFi";
+        case GestureAction::FullReset:
+            return "Data";
+        case GestureAction::Bootloader:
+            return "Bootloader";
         default:
             return "";
     }
@@ -160,7 +178,7 @@ void WidgetGestureOverlay::draw(uint16_t fill)
     OpenKNX::Ui::printCentred(d, 14, labelForAction(_lastAction), 2);
     OpenKNX::Ui::bar(d, 0, 32, d.width(), fill);
 
-    char left[8]; // "3.0 s"
+    char left[10]; // "3.0 s" .. "29.0 s"
     snprintf(left, sizeof(left), "%u.%u s", static_cast<unsigned>(_lastTenths / 10), static_cast<unsigned>(_lastTenths % 10));
     OpenKNX::Ui::printCentred(d, 44, left);
     // Hold: releasing early aborts; Auto (menu-triggered): LEFT aborts.

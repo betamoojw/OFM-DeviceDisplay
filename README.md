@@ -342,7 +342,7 @@ STARTUP -> IDLE -> {PRIORITY, BACKGROUND, DEFAULT}
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Gesture layer (decouples buttons from actions):** a Home-key `PRESS` arms the `GestureEngine` (`resolveAction` → `startHold`); `loop()` `tick()`s it; the CRITICAL `WidgetGestureOverlay` shows the countdown; on `Counting→Firing` **exactly one** callback runs — `ProgMode` (`knx.toggleProgMode()`), `Reboot` (`openknx.common.restart()`), `Pause` (`WidgetsManager::toggleRotationPause()`) or `DisplayOff` (`WidgetsManager::forceDisplayOff()`). Releasing before the bar completes aborts.
+**Gesture layer (decouples buttons from actions):** a Home-key `PRESS` arms the `GestureEngine` (`resolveAction` → `startHold`); `loop()` `tick()`s it; the CRITICAL `WidgetGestureOverlay` shows the countdown; on `Counting→Firing` **exactly one** callback runs — `ProgMode` (`knx.toggleProgMode()`), `Reboot` (`openknx.common.restart()`), `Pause` (`WidgetsManager::toggleRotationPause()`), `DisplayOff` (`WidgetsManager::forceDisplayOff()`), `Screenshot` (SD write from `loop()`) or one of the hold actions DisplayReset..Bootloader (latched, run from `loop()`). Releasing before the bar completes aborts, and so does pressing a second key while the bar runs.
 
 **Settings persistence:** a menu `onValueChanged` → `DisplaySettingsStore::setXxx()` → marks dirty → throttled `requestSave()` → `tickSave()` (2 s settle) → `DeviceDisplay::writeFlash()`. On boot `readFlash()` restores the blob; `applyToRuntime()` pushes brightness/screensaver/timeouts to `WidgetsManager` and invert/font to `i2cDisplay`.
 
@@ -870,25 +870,32 @@ Idle ─startHold()→ PreRoll ─(HOLD_PHASE1_MS)→ Counting ─(bar empty)→
                       └──────── endHold() ─────────┴──→ Aborted (no action)
 ```
 - **PreRoll** — button held; wait `HOLD_PHASE1_MS` (1000 ms) before the confirm bar starts.
-- **Counting** — the confirm bar runs down over `GESTURE_BAR_MS` (3000 ms); fraction is a linear 1.0 → 0.0 ramp.
+- **Counting** — the confirm bar runs down over `GESTURE_BAR_MS` (3000 ms), for a destructive action until 30 s of hold (`DESTRUCTIVE_HOLD_MS`); fraction is a linear 1.0 → 0.0 ramp.
 - **Firing** — bar reached 0 → the matching action callback is invoked **exactly once** (non-blocking).
 - **Done** — Prog/Pause dwell for `GESTURE_DONE_MS` (1300 ms) before returning to Idle. Reboot does not dwell (the device restarts).
 - **Aborted** — button released before Firing → no action.
 
 ### Actions (`GestureAction`) and default key map
-| Action | Effect | Default key |
-|--------|--------|-------------|
-| `Pause` | Pause / resume the widget rotation | UP |
-| `Reboot` | Reboot the device | DOWN |
-| `DisplayOff` | Turn the display off immediately (#17; any button wakes it) | LEFT |
-| `ProgMode` | Toggle KNX programming mode | OK/SELECT (hard-wired) |
-| `None` | Unmapped | RIGHT |
+| Action | Effect | Hold | Offered in | Default key |
+|--------|--------|------|------------|-------------|
+| `Pause` | Pause / resume the widget rotation | 4 s | every build | UP |
+| `Reboot` | Reboot the device | 4 s | every build | DOWN |
+| `DisplayOff` | Turn the display off immediately (#17; any button wakes it) | 4 s | every build | LEFT |
+| `Screenshot` | Framebuffer as BMP to the SD card | 4 s | every build | RIGHT |
+| `ProgMode` | Toggle KNX programming mode | 4 s | every build | OK/SELECT (hard-wired) |
+| `DisplayReset` | Display settings back to their defaults (same as Display → Reset) | 4 s | every build | – |
+| `NetworkRestart` | Restart the network adapter | 4 s | with OFM-Network | – |
+| `WifiReset` | Erase the WiFi credentials, restart (console `net wifi erase`) | 30 s | WiFi builds | – |
+| `FullReset` | Erase KNX parameters, OpenKNX data and files, restart (console `erase data`); the WiFi credentials stay | 30 s | every build | – |
+| `Bootloader` | Restart into the USB boot (RP2040/RP2350) or ROM download mode (ESP32-S3) | 30 s | RP2040, RP2350, ESP32-S3 | – |
+
+Values are persisted and only appended. Menu, web page, `ddc config set homekey_*` and `ddc i` use the position in the list of actions the build offers; a stored action the build does not offer acts as none. System → Factory reset in the menu runs `FullReset` after a No/Yes question.
 
 `resolveAction(button, isHomeScreen)`: **OK/SELECT always → ProgMode**; the four directional keys resolve via the `GestureKeyMap` **only while the Home screen is shown** (elsewhere they navigate the menu).
 
 ### Execution is decoupled from the engine
 The engine performs no side effects itself — DeviceDisplay binds callbacks, each fired at most once per gesture:
-`setOnProgToggle` (→ `knx.toggleProgMode()`), `setOnReboot` (→ `openknx.common.restart()`), `setOnPauseToggle` (rotation pause), `setOnDisplayOff` (→ display off).
+`setOnProgToggle` (→ `knx.toggleProgMode()`), `setOnReboot` (→ `openknx.common.restart()`), `setOnPauseToggle` (rotation pause), `setOnDisplayOff` (→ display off), `setOnScreenshot` (→ SD write from `loop()`), `setOnHoldAction` (DisplayReset..Bootloader: only latched, run from `loop()` 800 ms later so the toast reaches the panel; the overlay closes when they fire). A web hold press cannot arm WifiReset, FullReset or Bootloader: its release comes as a separate request that can get lost.
 
 ### Overlay modes
 - **Hold** — button-held confirm; hint *"Release = cancel"*.
@@ -913,14 +920,14 @@ Display settings are edited in the on-screen menu and **persisted in the DeviceD
 | `screenSaverType` | `ScreenSaverType` value 0..10; 5 and 8 (removed Matrix, Rain) load as 6. Menu, web and `ddc` use the list position 0..8 | 6 (Matrix) |
 | `screenSaverMin` | screensaver after N min; 0 = aus | 30 |
 | `sleepMin` | **display off** after N min; 0 = nie | 60 |
-| `keyMap[4]` | Home-key actions {UP, DOWN, LEFT, RIGHT} | Pause / Reboot / DisplayOff / Screenshot |
+| `keyMap[4]` | Home-key actions {UP, DOWN, LEFT, RIGHT}, `HomeKeyAction` value 0..10 | Pause / Reboot / DisplayOff / Screenshot |
 | `iconMenu` | render the root menu as an icon carousel | true |
 | `screenshotInvert` | screenshot paper look (swap BMP palette) | false |
 | `displayRotate` | 180° rotation (Anzeige → Display; **manual save**) | false |
 | `preChargeIdx` | pre-charge preset 0..5 (Anzeige → Display; **manual save**) | 5 |
 | `refreshIdx` | clock/refresh preset 0..5 (Anzeige → Display; **manual save**) | 3 |
 
-> `HomeKeyAction` **must** stay value-compatible with `GestureAction` (e.g. `DisplayOff = 4`) so the persisted key map feeds the gesture engine directly.
+> `HomeKeyAction` **must** stay value-compatible with `GestureAction` (e.g. `DisplayOff = 4`) so the persisted key map feeds the gesture engine directly. Values are only appended (6..10 are the hold actions); menu, web, `ddc config set` and `ddc i` use the list position of the actions the build offers.
 
 ### Display tuning & KONAMI
 The **Display → Panel** submenu exposes hardware tuning — 180° rotation, pre-charge, refresh — with **live preview but manual save**: a bad value is applied to the panel so you can judge it, but is persisted only via the submenu's **Save** action (No/Yes). Not saving + a reboot reverts it, so a mis-tuned panel can never brick across restarts. **Display → Reset** *does* restore them with all other display values to their safe defaults (that is a recovery, not a risk).

@@ -249,7 +249,8 @@ namespace OpenKNX
             "<div id='dsp-keys' class='dsp-keys'></div>"
             "</div>"
             "<p class='meta'>Halten wirkt wie am Gerät &ndash; kurz tippen navigiert, gedrückt halten löst die "
-            "Halte-Aktion aus (1 s bis der Bestätigungsbalken startet, dann 3 s).<br>"
+            "Halte-Aktion aus (1 s bis der Bestätigungsbalken startet, dann 3 s; Aktionen, die Daten löschen oder in "
+            "den Bootloader starten, nur an der Gerätetaste und erst nach 30 s).<br>"
             "&#9432; <b>OK</b> ist fest auf <b>Prog-Modus</b> und nicht umbelegbar &ndash; und wirkt auf jedem "
             "Bildschirm. Die vier Richtungstasten lösen ihre Halte-Aktion nur auf dem Home-Screen aus; "
             "im Menü navigieren sie nur.</p>"
@@ -521,8 +522,10 @@ namespace OpenKNX
             }
             if (action > 1) return;
 
-            openknxDisplayModule.handleButtonEvent(
-                ButtonEvent(TYPES[key], action == 0 ? ButtonAction::PRESS : ButtonAction::RELEASE));
+            if (action == 0)
+                openknxDisplayModule.handleRemoteButtonEvent(ButtonEvent(TYPES[key], ButtonAction::PRESS));
+            else
+                openknxDisplayModule.handleButtonEvent(ButtonEvent(TYPES[key], ButtonAction::RELEASE));
         }
 
         bool applyWidget(uint8_t op, int16_t index, long value)

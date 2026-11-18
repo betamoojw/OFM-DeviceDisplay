@@ -296,19 +296,11 @@ namespace
         return label != nullptr ? label : "?";
     }
 
-    // Label for a Home-key action (HomeKeyAction enum).
-    const char* homeKeyActionLabel(HomeKeyAction action)
+    // Home key line: list position (what "ddc config set homekey_*" takes) and the action it runs on this build.
+    void printHomeKey(const char* format, HomeKeyAction action)
     {
-        switch (action)
-        {
-            case HomeKeyAction::None: return "-";
-            case HomeKeyAction::Pause: return "Pause";
-            case HomeKeyAction::Reboot: return "Reboot";
-            case HomeKeyAction::Prog: return "Prog-Mode";
-            case HomeKeyAction::DisplayOff: return "Display off";
-            case HomeKeyAction::Screenshot: return "Screenshot";
-            default: return "?";
-        }
+        const uint8_t pos = homeKeyActionListPos(action);
+        openknx.logger.logWithValues(format, (unsigned)pos, homeKeyActionName(homeKeyActionAt(pos)));
     }
 
     // Short label for a menu element type (ddc i "Menu Config").
@@ -436,14 +428,10 @@ void DdcConsole::logMenuSettings()
     openknx.logger.log("-------------------------------------------------------");
     openknx.logger.color(0);
     openknx.logger.log(" Home-key actions:");
-    openknx.logger.logWithValues("   - Up          : %u (%s)", (unsigned)store.keyAction(HOME_KEY_UP),
-                                 homeKeyActionLabel(store.keyAction(HOME_KEY_UP)));
-    openknx.logger.logWithValues("   - Down        : %u (%s)", (unsigned)store.keyAction(HOME_KEY_DOWN),
-                                 homeKeyActionLabel(store.keyAction(HOME_KEY_DOWN)));
-    openknx.logger.logWithValues("   - Left        : %u (%s)", (unsigned)store.keyAction(HOME_KEY_LEFT),
-                                 homeKeyActionLabel(store.keyAction(HOME_KEY_LEFT)));
-    openknx.logger.logWithValues("   - Right       : %u (%s)", (unsigned)store.keyAction(HOME_KEY_RIGHT),
-                                 homeKeyActionLabel(store.keyAction(HOME_KEY_RIGHT)));
+    printHomeKey("   - Up          : %u (%s)", store.keyAction(HOME_KEY_UP));
+    printHomeKey("   - Down        : %u (%s)", store.keyAction(HOME_KEY_DOWN));
+    printHomeKey("   - Left        : %u (%s)", store.keyAction(HOME_KEY_LEFT));
+    printHomeKey("   - Right       : %u (%s)", store.keyAction(HOME_KEY_RIGHT));
     openknx.logger.color(CONSOLE_HEADLINE_COLOR);
     openknx.logger.log("-------------------------------------------------------");
     openknx.logger.color(0);
