@@ -1234,6 +1234,21 @@ void DeviceDisplay::handleHomeNavigation(ButtonType type)
  */
 void DeviceDisplay::armGesture(ButtonType type)
 {
+    // One key at a time: a running hold stays with its key and no press arms another one. Once the bar runs, a
+    // second key cancels the hold and both releases are dropped; before that it only navigates on its release.
+    const GesturePhase phase = _gestureEngine.getPhase();
+    if (_gestureButtonArmed && phase != GesturePhase::Idle && phase != GesturePhase::Aborted)
+    {
+        if (type != _heldGestureButton && phase != GesturePhase::PreRoll)
+        {
+            _gestureEngine.endHold();  // Counting -> Aborted; a fired action stays fired
+            _gestureReachedBar = true; // the held key's release is consumed instead of navigating
+            _swallowMask |= buttonBit(type);
+            logInfoP("Gesture cancelled by a second key");
+        }
+        return;
+    }
+
     const GestureAction action = _gestureEngine.resolveAction(type, isHomeScreen());
     if (action != GestureAction::None)
     {
